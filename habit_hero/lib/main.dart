@@ -1,4 +1,6 @@
 // lib/main.dart (komplett ersetzen)
+// UI-Polish + Overflow-Fixes (responsive, keine Right-Overflows)
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -86,13 +88,13 @@ class HabitHeroApp extends StatelessWidget {
     return base.copyWith(
       useMaterial3: true,
       primaryColor: Colors.teal,
-      colorScheme: base.colorScheme.copyWith(primary: Colors.teal),
-      scaffoldBackgroundColor: Colors.grey[100],
+      colorScheme: base.colorScheme.copyWith(primary: Colors.teal, secondary: Colors.tealAccent),
+      scaffoldBackgroundColor: Colors.grey[50],
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
-        elevation: 2,
+        elevation: 1,
         titleTextStyle: textTheme.titleLarge?.copyWith(color: Colors.black87, fontWeight: FontWeight.w700),
       ),
       cardColor: Colors.white,
@@ -105,13 +107,13 @@ class HabitHeroApp extends StatelessWidget {
     return base.copyWith(
       useMaterial3: true,
       primaryColor: Colors.teal,
-      colorScheme: base.colorScheme.copyWith(primary: Colors.teal),
-      scaffoldBackgroundColor: Colors.black,
+      colorScheme: base.colorScheme.copyWith(primary: Colors.teal, secondary: Colors.tealAccent),
+      scaffoldBackgroundColor: Colors.grey[900],
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.grey[900],
         foregroundColor: Colors.white,
-        elevation: 2,
+        elevation: 1,
         titleTextStyle: textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
       ),
       cardColor: Colors.grey[850],
@@ -150,7 +152,7 @@ class _EntryDeciderState extends State<EntryDecider> {
   }
 }
 
-/// HomePage
+/// --- HomePage mit UI-Polish + Overflow-Fixes ---
 class HomePage extends StatefulWidget {
   @override
   State<HomePage> createState() => _HomePageState();
@@ -163,10 +165,19 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Map<int, List<int>> _chartData = {};
   bool _loading = true;
 
+  late final AnimationController _listAnimController;
+
   @override
   void initState() {
     super.initState();
+    _listAnimController = AnimationController(vsync: this, duration: Duration(milliseconds: 450));
     _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _listAnimController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAll() async {
@@ -188,10 +199,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         _checked = checkedToday.toSet();
         _chartData = charts;
       });
+
+      if (_habits.isNotEmpty) _listAnimController.forward(from: 0.0);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ladefehler: $e')));
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -218,7 +231,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     final res = await showDialog<String?>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Neuen Habit'),
+        title: Text('Neuer Habit'),
         content: TextField(controller: ctrl, autofocus: true, decoration: InputDecoration(hintText: 'z. B. 30 Min. Bewegung')),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text('Abbrechen')),
@@ -229,6 +242,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
     if (res != null && res.trim().isNotEmpty) {
       await _addHabit(res);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Habit erstellt'), duration: Duration(milliseconds: 900)));
     }
   }
 
@@ -253,30 +267,48 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     return streak;
   }
 
+  double _overallCompletionPercent() {
+    if (_chartData.isEmpty) return 0.0;
+    double sum = 0.0;
+    int count = 0;
+    _chartData.forEach((_, list) {
+      if (list.isNotEmpty) {
+        sum += list.reduce((a, b) => a + b) / list.length;
+        count++;
+      }
+    });
+    if (count == 0) return 0.0;
+    return (sum / count) * 100.0;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appSettings = Provider.of<AppSettingsNotifier>(context);
     final compact = appSettings.compactMode;
 
-    final cardPadding = compact ? 8.0 : 12.0;
+    final cardPadding = compact ? 10.0 : 16.0;
     final tileFontSize = compact ? 14.0 : 16.0;
-
-    final double cardMinHeight = compact ? 88.0 : 110.0;
+    final double cardMinHeight = compact ? 86.0 : 110.0;
+    final overallPercent = _overallCompletionPercent().round();
 
     return Scaffold(
       appBar: AppBar(
-        leadingWidth: 140,
+        elevation: 1,
+        leadingWidth: 120, // reduziert, um Platz bei kleinen Screens zu sparen
         leading: Padding(
-          padding: EdgeInsets.only(left: cardPadding),
+          padding: EdgeInsets.only(left: 8),
           child: Row(
             children: [
               Hero(
                 tag: 'logo-hero',
-                child: Image.asset('assets/logo.png', width: compact ? 40 : 48, height: compact ? 40 : 48, fit: BoxFit.contain),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset('assets/logo.png', width: compact ? 36 : 44, height: compact ? 36 : 44, fit: BoxFit.contain),
+                ),
               ),
-              SizedBox(width: compact ? 6 : 8),
-              Flexible(child: Text('HabitHero', style: TextStyle(fontWeight: FontWeight.w600))),
+              SizedBox(width: 8),
+              Flexible(child: Text('HabitHero', style: TextStyle(fontWeight: FontWeight.w700))),
             ],
           ),
         ),
@@ -292,191 +324,133 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StatsOverviewPage())).then((_) => _loadAll()),
           ),
           IconButton(
-            icon: Icon(Icons.settings),
+            icon: Icon(Icons.settings_outlined),
             tooltip: 'Einstellungen',
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsPage())).then((_) => _loadAll()),
           ),
-          IconButton(icon: Icon(Icons.refresh), onPressed: _loadAll, tooltip: 'Neu laden'),
+          SizedBox(width: 6),
         ],
       ),
-      body: Padding(
-        padding: EdgeInsets.all(compact ? 8 : 12),
-        child: Column(
-          children: [
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: EdgeInsets.all(cardPadding),
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.all(compact ? 10 : 16),
+          child: Column(
+            children: [
+              // Header card with overall percent
+              AnimatedContainer(
+                duration: Duration(milliseconds: 420),
+                curve: Curves.easeOutCubic,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))],
+                ),
+                padding: EdgeInsets.symmetric(horizontal: cardPadding, vertical: compact ? 12 : 16),
                 child: Row(
                   children: [
-                    Expanded(child: Text('Meine Habits – ${_formatToday()}')),
-                    IconButton(onPressed: _showAddDialog, icon: Icon(Icons.add), visualDensity: compact ? VisualDensity.compact : VisualDensity.standard),
+                    // Left: texts
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Guten Tag', style: TextStyle(fontSize: compact ? 14 : 16, color: Colors.grey[700])),
+                          SizedBox(height: 6),
+                          Text('Deine Gewohnheiten', style: TextStyle(fontSize: compact ? 18 : 20, fontWeight: FontWeight.w800)),
+                          SizedBox(height: 8),
+                          Text('Letzte Aktualisierung: ${_formatToday()}', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600])),
+                        ],
+                      ),
+                    ),
+
+                    // Right: animated circular percent (fixed box -> prevents overflow)
+                    SizedBox(
+                      width: compact ? 72 : 88,
+                      child: Column(
+                        children: [
+                          TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0.0, end: overallPercent / 100.0),
+                            duration: Duration(milliseconds: 800),
+                            builder: (context, val, _) {
+                              final p = (val * 100).round();
+                              return SizedBox(
+                                width: compact ? 56 : 72,
+                                height: compact ? 56 : 72,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    CircularProgressIndicator(
+                                      value: val,
+                                      strokeWidth: compact ? 6 : 8,
+                                      backgroundColor: theme.colorScheme.onSurface.withOpacity(0.06),
+                                      valueColor: AlwaysStoppedAnimation(p >= 70 ? Colors.green : (p >= 40 ? Colors.orange : Colors.red)),
+                                    ),
+                                    Text('$p%', style: TextStyle(fontWeight: FontWeight.w700, fontSize: compact ? 12 : 14)),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                          SizedBox(height: 6),
+                          Text('Ø-Erf.', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600])),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ),
-            SizedBox(height: compact ? 8 : 10),
-            Expanded(
-              child: _loading
-                  ? Center(child: CircularProgressIndicator())
-                  : _habits.isEmpty
-                      ? Center(child: Text('Noch keine Habits. Tippe + um einen zu erstellen.'))
-                      : ListView.separated(
-                          itemCount: _habits.length,
-                          separatorBuilder: (_, __) => SizedBox(height: compact ? 6 : 8),
-                          itemBuilder: (ctx, i) {
-                            final h = _habits[i];
-                            final isOn = h.id != null && _checked.contains(h.id);
-                            final last7 = (h.id != null && _chartData.containsKey(h.id)) ? _chartData[h.id!]! : List.filled(7, 0);
 
-                            final int percent30 = _calcPercentFromList(last7);
-                            final int streak = _calcStreakFor7(last7);
+              SizedBox(height: compact ? 10 : 12),
 
-                            return LayoutBuilder(builder: (context, constraints) {
-                              final availableCardWidth = constraints.maxWidth;
-                              final rightMax = (availableCardWidth * (compact ? 0.22 : 0.24)).clamp(70.0, 140.0);
+              // Actions: Add + Tipps (Tipps ist nur IconButton, damit kein Overflow)
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      icon: Icon(Icons.add),
+                      label: Text('Neuer Habit'),
+                      style: ElevatedButton.styleFrom(padding: EdgeInsets.symmetric(vertical: compact ? 10 : 12)),
+                      onPressed: _showAddDialog,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  // Icon-only to avoid long label overflow on small screens
+                  IconButton(
+                    icon: Icon(Icons.info_outline),
+                    tooltip: 'Tipps',
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnboardingPage())),
+                  ),
+                ],
+              ),
 
-                              return Slidable(
-                                key: ValueKey(h.id ?? '${h.name}-$i'),
-                                endActionPane: ActionPane(
-                                  motion: DrawerMotion(),
-                                  extentRatio: 0.32,
-                                  children: [
-                                    SlidableAction(
-                                      onPressed: (ctx) {
-                                        if (h.id != null) {
-                                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => HabitDetailPage(habit: h))).then((_) => _loadAll());
-                                        }
-                                      },
-                                      backgroundColor: Colors.blue,
-                                      foregroundColor: Colors.white,
-                                      icon: Icons.edit,
-                                      label: 'Details',
-                                    ),
-                                    SlidableAction(
-                                      onPressed: (ctx) async {
-                                        if (h.id != null) {
-                                          final confirm = await showDialog<bool>(
-                                            context: context,
-                                            builder: (dCtx) => AlertDialog(
-                                              title: Text('Habit löschen'),
-                                              content: Text('Wirklich "${h.name}" löschen?'),
-                                              actions: [
-                                                TextButton(onPressed: () => Navigator.of(dCtx).pop(false), child: Text('Abbrechen')),
-                                                ElevatedButton(onPressed: () => Navigator.of(dCtx).pop(true), child: Text('Löschen')),
-                                              ],
-                                            ),
-                                          );
-                                          if (confirm == true) {
-                                            await _deleteHabit(h.id!);
-                                            ScaffoldMessenger.of(context).clearSnackBars();
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(
-                                                content: Text('Habit gelöscht'),
-                                                action: SnackBarAction(
-                                                  label: 'Rückgängig',
-                                                  onPressed: () {
-                                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Bitte neu anlegen — Wiederherstellung nicht verfügbar.')));
-                                                  },
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                        }
-                                      },
-                                      backgroundColor: Colors.red,
-                                      foregroundColor: Colors.white,
-                                      icon: Icons.delete,
-                                      label: 'Löschen',
-                                    ),
-                                  ],
-                                ),
-                                child: AnimatedContainer(
-                                  duration: Duration(milliseconds: 300),
-                                  curve: Curves.easeOutCubic,
-                                  constraints: BoxConstraints(minHeight: cardMinHeight),
-                                  decoration: BoxDecoration(
-                                    color: theme.cardColor,
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
-                                  ),
-                                  child: Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 16, vertical: compact ? 8 : 12),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.center,
-                                      children: [
-                                        // left: circular percent
-                                        SizedBox(
-                                          width: compact ? 56 : 68,
-                                          child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              CircularProgressPercent(percent: percent30, size: compact ? 44 : 56),
-                                              SizedBox(height: 6),
-                                              FittedBox(child: Text('${percent30}%', style: TextStyle(fontSize: compact ? 11 : 12))),
-                                            ],
-                                          ),
-                                        ),
+              SizedBox(height: compact ? 10 : 12),
 
-                                        SizedBox(width: compact ? 10 : 14),
+              // Content area
+              Expanded(
+                child: _loading
+                    ? Center(child: CircularProgressIndicator())
+                    : _habits.isEmpty
+                        ? _buildEmptyState(context)
+                        : FadeTransition(
+                            opacity: CurvedAnimation(parent: _listAnimController, curve: Curves.easeIn),
+                            child: ListView.separated(
+                              itemCount: _habits.length,
+                              separatorBuilder: (_, __) => SizedBox(height: compact ? 8 : 10),
+                              itemBuilder: (ctx, i) {
+                                final h = _habits[i];
+                                final isOn = h.id != null && _checked.contains(h.id);
+                                final last7 = (h.id != null && _chartData.containsKey(h.id)) ? _chartData[h.id!]! : List.filled(7, 0);
 
-                                        // middle: flexible column (title + streak + timeline)
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Flexible(
-                                                    child: Text(
-                                                      h.name,
-                                                      style: TextStyle(fontSize: tileFontSize, fontWeight: FontWeight.w600),
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              SizedBox(height: compact ? 6 : 8),
-                                              Row(
-                                                children: [
-                                                  Icon(Icons.local_fire_department, size: compact ? 14 : 16, color: streak > 0 ? Colors.orange : Colors.grey),
-                                                  SizedBox(width: 6),
-                                                  Text('Streak: $streak', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[700])),
-                                                ],
-                                              ),
-                                              SizedBox(height: compact ? 8 : 10),
-                                              HabitDotTimeline(data: last7, compact: compact),
-                                            ],
-                                          ),
-                                        ),
+                                final int percent30 = _calcPercentFromList(last7);
+                                final int streak = _calcStreakFor7(last7);
 
-                                        SizedBox(width: 12),
-
-                                        // right: constrained button area
-                                        ConstrainedBox(
-                                          constraints: BoxConstraints(maxWidth: rightMax),
-                                          child: HabitDoneButton(
-                                            habitId: h.id,
-                                            isDone: isOn,
-                                            compact: compact,
-                                            onToggled: () async {
-                                              if (h.id == null) return;
-                                              await _toggleCheck(h.id!);
-                                            },
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              );
-                            });
-                          },
-                        ),
-            ),
-          ],
+                                return _buildHabitCard(h, percent30, streak, last7, tileFontSize, cardMinHeight, compact, ctx, i);
+                              },
+                            ),
+                          ),
+              ),
+            ],
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -486,9 +460,196 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       ),
     );
   }
+
+  Widget _buildEmptyState(BuildContext context) {
+    final compact = Provider.of<AppSettingsNotifier>(context).compactMode;
+    return Center(
+      child: SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 560),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 6))],
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.emoji_objects_outlined, size: 64, color: Colors.teal),
+                    SizedBox(height: 12),
+                    Text('Fange klein an', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                    SizedBox(height: 8),
+                    Text('Erstelle deinen ersten Habit und verfolge ihn täglich. Ich helfe dir dabei, dran zu bleiben.',
+                        textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[700])),
+                    SizedBox(height: 14),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        ElevatedButton.icon(onPressed: _showAddDialog, icon: Icon(Icons.add), label: Text('Erstellen')),
+                        OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnboardingPage())), icon: Icon(Icons.play_circle_outline), label: Text('Kurze Einführung')),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: compact ? 12 : 18),
+              Text('Tipp: Beginne mit einer kleinen, konkreten Gewohnheit — z. B. 10 Minuten Bewegung.', style: TextStyle(color: Colors.grey[600])),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHabitCard(Habit h, int percent30, int streak, List<int> last7, double tileFontSize, double cardMinHeight, bool compact, BuildContext ctx, int index) {
+    final theme = Theme.of(context);
+
+    return LayoutBuilder(builder: (context, constraints) {
+      // use constraints.maxWidth (the real available width) to compute right area
+      final availableCardWidth = constraints.maxWidth;
+      final rightMax = (availableCardWidth * (compact ? 0.20 : 0.24)).clamp(70.0, 140.0);
+
+      return Slidable(
+        key: ValueKey(h.id ?? '${h.name}-$index'),
+        endActionPane: ActionPane(
+          motion: DrawerMotion(),
+          extentRatio: 0.34,
+          children: [
+            SlidableAction(
+              onPressed: (ctx) {
+                if (h.id != null) {
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => HabitDetailPage(habit: h))).then((_) => _loadAll());
+                }
+              },
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              icon: Icons.edit,
+              label: 'Details',
+            ),
+            SlidableAction(
+              onPressed: (ctx) async {
+                if (h.id != null) {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (dCtx) => AlertDialog(
+                      title: Text('Habit löschen'),
+                      content: Text('Wirklich "${h.name}" löschen?'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.of(dCtx).pop(false), child: Text('Abbrechen')),
+                        ElevatedButton(onPressed: () => Navigator.of(dCtx).pop(true), child: Text('Löschen')),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    await _deleteHabit(h.id!);
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Habit gelöscht'),
+                        action: SnackBarAction(label: 'Rückgängig', onPressed: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Bitte neu anlegen — Wiederherstellung nicht verfügbar.')))),
+                      ),
+                    );
+                  }
+                }
+              },
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              icon: Icons.delete,
+              label: 'Löschen',
+            ),
+          ],
+        ),
+        child: AnimatedContainer(
+          duration: Duration(milliseconds: 420),
+          curve: Curves.easeOutCubic,
+          constraints: BoxConstraints(minHeight: cardMinHeight),
+          margin: EdgeInsets.symmetric(horizontal: 0),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+          ),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16, vertical: compact ? 10 : 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // left: circular percent
+                SizedBox(
+                  width: compact ? 56 : 68,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressPercent(percent: percent30, size: compact ? 44 : 56),
+                      SizedBox(height: 8),
+                      Text('${percent30}%', style: TextStyle(fontSize: compact ? 11 : 12)),
+                    ],
+                  ),
+                ),
+
+                SizedBox(width: compact ? 12 : 16),
+
+                // middle: flexible column (title + streak + timeline)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Expanded(
+                          child: Text(
+                            h.name,
+                            style: TextStyle(fontSize: tileFontSize, fontWeight: FontWeight.w700),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ]),
+                      SizedBox(height: compact ? 6 : 8),
+                      Row(
+                        children: [
+                          Icon(Icons.local_fire_department, size: compact ? 14 : 16, color: streak > 0 ? Colors.orange : Colors.grey),
+                          SizedBox(width: 6),
+                          Flexible(child: Text('Streak: $streak', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600]))),
+                        ],
+                      ),
+                      SizedBox(height: compact ? 8 : 10),
+                      HabitDotTimeline(data: last7, compact: compact),
+                    ],
+                  ),
+                ),
+
+                SizedBox(width: 12),
+
+                // right: constrained button area
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: rightMax),
+                  child: HabitDoneButton(
+                    habitId: h.id,
+                    isDone: h.id != null && _checked.contains(h.id),
+                    compact: compact,
+                    onToggled: () async {
+                      if (h.id == null) return;
+                      await _toggleCheck(h.id!);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    });
+  }
 }
 
-/// Circular percent widget
+/// runde Prozent-Anzeige
 class CircularProgressPercent extends StatelessWidget {
   final int percent;
   final double size;
@@ -524,7 +685,7 @@ class CircularProgressPercent extends StatelessWidget {
   }
 }
 
-/// Dot timeline (7 days)
+/// Dot timeline widget (7 Tage)
 class HabitDotTimeline extends StatelessWidget {
   final List<int> data; // oldest -> newest
   final bool compact;
@@ -627,7 +788,7 @@ class HabitDotTimeline extends StatelessWidget {
   }
 }
 
-/// Done button
+/// Improved Done Button
 class HabitDoneButton extends StatefulWidget {
   final int? habitId;
   final bool isDone;
