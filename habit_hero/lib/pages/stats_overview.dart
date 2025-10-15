@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:provider/provider.dart';
 import '../data/db_helper.dart';
 import '../models/habit.dart';
+import '../main.dart';
 
-/// Statistik-Übersicht — adaptive Chart-Höhe, kleinere Labels, Overflow-Fixes für hohe Auflösungen.
 class StatsOverviewPage extends StatefulWidget {
   @override
   _StatsOverviewPageState createState() => _StatsOverviewPageState();
@@ -12,14 +13,9 @@ class StatsOverviewPage extends StatefulWidget {
 class _StatsOverviewPageState extends State<StatsOverviewPage> {
   final DBHelper _db = DBHelper.instance;
   List<Habit> _habits = [];
-  Map<int, List<int>> _last7 = {}; // habitId -> 0/1 oldest->newest
+  Map<int, List<int>> _last7 = {};
   Map<int, List<int>> _last30 = {};
   bool _loading = true;
-
-  // Baseline max values — werden adaptiv reduziert auf kleinen Bildschirmen
-  static const double _maxChartHeight = 120;
-  static const double _minChartHeight = 80;
-  static const double _baseBottomReserved = 44;
 
   @override
   void initState() {
@@ -46,9 +42,7 @@ class _StatsOverviewPageState extends State<StatsOverviewPage> {
         _last30 = l30;
       });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler beim Laden: $e')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler beim Laden: $e')));
     } finally {
       setState(() => _loading = false);
     }
@@ -70,17 +64,6 @@ class _StatsOverviewPageState extends State<StatsOverviewPage> {
     return ((sum / data.length) * 100).round();
   }
 
-  int _overallAveragePercent() {
-    if (_habits.isEmpty) return 0;
-    final totals = _habits.map((h) {
-      final d30 = _last30[h.id!] ?? List.filled(30, 0);
-      return _calcPercent(d30);
-    }).toList();
-    if (totals.isEmpty) return 0;
-    final avg = totals.reduce((a, b) => a + b) / totals.length;
-    return avg.round();
-  }
-
   String _dateFullForIndex(int indexFromOldest, int totalDays) {
     final start = DateTime.now().subtract(Duration(days: totalDays - 1));
     final day = start.add(Duration(days: indexFromOldest));
@@ -94,230 +77,183 @@ class _StatsOverviewPageState extends State<StatsOverviewPage> {
     return names[(day.weekday - 1) % 7];
   }
 
-  /// Berechnet eine adaptive Chart-Höhe basierend auf verfügbarer Bildschirmhöhe
-  double _computeChartHeight(BuildContext ctx) {
-    final mq = MediaQuery.of(ctx);
-    final available = mq.size.height - mq.padding.top - kToolbarHeight; // grobe verfügbare Höhe
-    // Ziel: Chart nicht größer als 20% der verfügbaren Höhe, begrenzt durch min/max
-    final candidate = available * 0.18;
-    return candidate.clamp(_minChartHeight, _maxChartHeight);
-  }
-
-  /// Adaptive reserved size (für bottom titles) — reduziert leicht bei wenig Platz
-  double _computeReservedSize(BuildContext ctx) {
-    final mq = MediaQuery.of(ctx);
-    final available = mq.size.height - mq.padding.top - kToolbarHeight;
-    final candidate = _baseBottomReserved;
-    // wenn sehr wenig Platz, mache reserved kleiner
-    if (available < 600) return candidate * 0.9;
-    return candidate;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final overall = _overallAveragePercent();
+    final appSettings = Provider.of<AppSettingsNotifier>(context);
+    final compact = appSettings.compactMode;
     final theme = Theme.of(context);
-    final chartHeight = _computeChartHeight(context);
-    final reservedSize = _computeReservedSize(context);
+
+    final chartHeight = compact ? 100.0 : 140.0;
+    final bottomReserved = compact ? 40.0 : 48.0;
+    final headerFontSize = compact ? 14.0 : 16.0;
 
     return Scaffold(
       appBar: AppBar(
         title: Text('Statistik Übersicht'),
         actions: [
-          IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: _loadStats,
-            tooltip: 'Aktualisieren',
-          ),
+          IconButton(icon: Icon(Icons.refresh), onPressed: _loadStats, tooltip: 'Aktualisieren'),
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(12),
-          child: _loading
-              ? Center(child: CircularProgressIndicator())
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Dashboard + legend (kompakter)
-                    Card(
-                      margin: EdgeInsets.only(bottom: 10),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Durchschnitt (30 Tage)', style: TextStyle(color: Colors.grey[700])),
-                                  SizedBox(height: 6),
-                                  Row(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text('$overall%', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                                      SizedBox(width: 10),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('${_habits.length} Habits', style: TextStyle(color: Colors.grey[600])),
-                                          SizedBox(height: 4),
-                                          Text('Tippe Balken = Datum & Status', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+      body: Padding(
+        padding: EdgeInsets.all(compact ? 8 : 12),
+        child: _loading
+            ? Center(child: CircularProgressIndicator())
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // small dashboard
+                  Card(
+                    margin: EdgeInsets.only(bottom: compact ? 8 : 12),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14, vertical: compact ? 10 : 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    _legendSwatch(theme.primaryColor),
-                                    SizedBox(width: 8),
-                                    Text('Erledigt', style: TextStyle(fontSize: 13)),
-                                  ],
-                                ),
-                                SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    _legendSwatch(Colors.grey.shade300),
-                                    SizedBox(width: 8),
-                                    Text('Nicht erledigt', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
-                                  ],
-                                ),
+                                Text('Durchschnitt (30 Tage)', style: TextStyle(color: Colors.grey[700], fontSize: headerFontSize)),
+                                SizedBox(height: 6),
+                                Text('${_overallAveragePercent()}%', style: TextStyle(fontSize: compact ? 22 : 28, fontWeight: FontWeight.bold)),
                               ],
                             ),
-                          ],
-                        ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              _legendSwatch(theme.primaryColor, compact),
+                              SizedBox(height: 6),
+                              _legendSwatch(Colors.grey.shade300, compact),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
+                  ),
 
-                    // Habits list
-                    Expanded(
-                      child: _habits.isEmpty
-                          ? Center(child: Text('Noch keine Habits.'))
-                          : RefreshIndicator(
-                              onRefresh: _loadStats,
-                              child: ListView.builder(
-                                padding: EdgeInsets.only(bottom: 28),
-                                itemCount: _habits.length,
-                                itemBuilder: (ctx, idx) {
-                                  final h = _habits[idx];
-                                  final d7 = (_last7[h.id!] ?? List.filled(7, 0));
-                                  final d30 = (_last30[h.id!] ?? List.filled(30, 0));
-                                  final percent30 = _calcPercent(d30);
-                                  final streak = _calcStreak(d7);
+                  Expanded(
+                    child: _habits.isEmpty
+                        ? Center(child: Text('Noch keine Habits.'))
+                        : RefreshIndicator(
+                            onRefresh: _loadStats,
+                            child: ListView.builder(
+                              padding: EdgeInsets.only(bottom: 24),
+                              itemCount: _habits.length,
+                              itemBuilder: (ctx, i) {
+                                final h = _habits[i];
+                                final d7 = (_last7[h.id!] ?? List.filled(7, 0));
+                                final d30 = (_last30[h.id!] ?? List.filled(30, 0));
+                                final percent30 = _calcPercent(d30);
+                                final streak = _calcStreak(d7);
 
-                                  return Card(
-                                    margin: EdgeInsets.symmetric(vertical: 8),
-                                    child: Padding(
-                                      padding: EdgeInsets.all(10),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          // header
-                                          Row(
-                                            children: [
-                                              Expanded(child: Text(h.name, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
-                                              Column(
-                                                crossAxisAlignment: CrossAxisAlignment.end,
-                                                children: [
-                                                  Text('$percent30%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                                                  SizedBox(height: 4),
-                                                  Text('Streak: $streak', style: TextStyle(color: Colors.grey[700])),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                          SizedBox(height: 8),
-
-                                          // Chart (adaptive height)
-                                          SizedBox(
-                                            height: chartHeight,
-                                            child: BarChart(
-                                              BarChartData(
-                                                maxY: 1.0,
-                                                minY: 0.0,
-                                                barGroups: _barGroupsFromDataWithColor(d7, theme.primaryColor),
-                                                alignment: BarChartAlignment.spaceAround,
-                                                gridData: FlGridData(show: false),
-                                                borderData: FlBorderData(show: false),
-                                                titlesData: FlTitlesData(
-                                                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                                                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                                                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                                                  bottomTitles: AxisTitles(
-                                                    sideTitles: SideTitles(
-                                                      showTitles: true,
-                                                      reservedSize: reservedSize,
-                                                      getTitlesWidget: (double value, TitleMeta meta) {
-                                                        final i = value.toInt();
-                                                        if (i < 0 || i > 6) return const SizedBox.shrink();
-                                                        final week = _weekdayShortForIndex(i, 7);
-                                                        final date = _dateFullForIndex(i, 7);
-                                                        // compact fixed-height widget to avoid overflow
-                                                        return SizedBox(
-                                                          height: reservedSize,
-                                                          child: Column(
-                                                            mainAxisSize: MainAxisSize.min,
-                                                            children: [
-                                                              Text(week, style: TextStyle(fontSize: 11)),
-                                                              SizedBox(height: 4),
-                                                              Text(date.substring(0, 5), style: TextStyle(fontSize: 10, color: Colors.grey[700])),
-                                                            ],
-                                                          ),
-                                                        );
-                                                      },
-                                                    ),
-                                                  ),
-                                                ),
-                                                barTouchData: BarTouchData(
-                                                  enabled: true,
-                                                  touchTooltipData: BarTouchTooltipData(
-                                                    tooltipMargin: 6,
-                                                    getTooltipItem: (BarChartGroupData group, int groupIndex, BarChartRodData rod, int rodIndex) {
-                                                      final idxBar = group.x.toInt();
-                                                      final dateFull = _dateFullForIndex(idxBar, 7);
-                                                      final done = rod.toY >= 0.5;
-                                                      final status = done ? 'Erledigt' : 'Nicht erledigt';
-                                                      final text = '$dateFull\n$status';
-                                                      return BarTooltipItem(text, TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13));
+                                return Card(
+                                  margin: EdgeInsets.symmetric(vertical: compact ? 6 : 8),
+                                  child: Padding(
+                                    padding: EdgeInsets.all(compact ? 10 : 12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(child: Text(h.name, style: TextStyle(fontSize: compact ? 14 : 16, fontWeight: FontWeight.w600))),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                Text('$percent30%', style: TextStyle(fontSize: compact ? 14 : 16, fontWeight: FontWeight.bold)),
+                                                SizedBox(height: 4),
+                                                Text('Streak: $streak', style: TextStyle(color: Colors.grey[700], fontSize: compact ? 12 : 13)),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                        SizedBox(height: compact ? 8 : 12),
+                                        SizedBox(
+                                          height: chartHeight,
+                                          child: BarChart(
+                                            BarChartData(
+                                              maxY: 1.0,
+                                              minY: 0.0,
+                                              barGroups: _barGroupsFromDataWithColor(d7, theme.primaryColor),
+                                              alignment: BarChartAlignment.spaceAround,
+                                              gridData: FlGridData(show: false),
+                                              borderData: FlBorderData(show: false),
+                                              titlesData: FlTitlesData(
+                                                leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                                bottomTitles: AxisTitles(
+                                                  sideTitles: SideTitles(
+                                                    showTitles: true,
+                                                    reservedSize: bottomReserved,
+                                                    getTitlesWidget: (double value, TitleMeta meta) {
+                                                      final i = value.toInt();
+                                                      if (i < 0 || i > 6) return const SizedBox.shrink();
+                                                      final week = _weekdayShortForIndex(i, 7);
+                                                      final date = _dateFullForIndex(i, 7);
+                                                      return SizedBox(
+                                                        height: bottomReserved,
+                                                        child: Column(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: [
+                                                            Text(week, style: TextStyle(fontSize: compact ? 10 : 12)),
+                                                            SizedBox(height: 4),
+                                                            Text(date.substring(0, 5), style: TextStyle(fontSize: compact ? 9 : 11, color: Colors.grey[700])),
+                                                          ],
+                                                        ),
+                                                      );
                                                     },
                                                   ),
                                                 ),
                                               ),
-                                              swapAnimationDuration: Duration(milliseconds: 450),
-                                              swapAnimationCurve: Curves.easeOutCubic,
+                                              barTouchData: BarTouchData(
+                                                enabled: true,
+                                                touchTooltipData: BarTouchTooltipData(
+                                                  tooltipMargin: 6,
+                                                  getTooltipItem: (BarChartGroupData group, int groupIndex, BarChartRodData rod, int rodIndex) {
+                                                    final idxBar = group.x.toInt();
+                                                    final dateFull = _dateFullForIndex(idxBar, 7);
+                                                    final done = rod.toY >= 0.5;
+                                                    final status = done ? 'Erledigt' : 'Nicht erledigt';
+                                                    final text = '$dateFull\n$status';
+                                                    return BarTooltipItem(text, TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: compact ? 11 : 13));
+                                                  },
+                                                ),
+                                              ),
                                             ),
+                                            swapAnimationDuration: Duration(milliseconds: 500),
+                                            swapAnimationCurve: Curves.easeOutCubic,
                                           ),
-
-                                          SizedBox(height: 8),
-                                          Row(
-                                            children: [
-                                              Text('Letzte 7 Tage: ${d7.reduce((a, b) => a + b)}/7', style: TextStyle(color: Colors.grey[800])),
-                                              SizedBox(width: 16),
-                                              Text('Letzte 30 Tage: ${d30.reduce((a, b) => a + b)}/30', style: TextStyle(color: Colors.grey[800])),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
+                                        ),
+                                        SizedBox(height: compact ? 8 : 10),
+                                        Row(
+                                          children: [
+                                            Text('Letzte 7 Tage: ${d7.reduce((a, b) => a + b)}/7', style: TextStyle(color: Colors.grey[800], fontSize: compact ? 12 : 13)),
+                                            SizedBox(width: 12),
+                                            Text('Letzte 30 Tage: ${d30.reduce((a, b) => a + b)}/30', style: TextStyle(color: Colors.grey[800], fontSize: compact ? 12 : 13)),
+                                          ],
+                                        ),
+                                      ],
                                     ),
-                                  );
-                                },
-                              ),
+                                  ),
+                                );
+                              },
                             ),
-                    ),
-                  ],
-                ),
-        ),
+                          ),
+                  ),
+                ],
+              ),
       ),
     );
   }
 
-  Widget _legendSwatch(Color color) => Container(width: 14, height: 14, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)));
+  Widget _legendSwatch(Color color, bool compact) {
+    return Row(
+      children: [
+        Container(width: compact ? 12 : 14, height: compact ? 12 : 14, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
+        SizedBox(width: compact ? 8 : 10),
+      ],
+    );
+  }
 
   List<BarChartGroupData> _barGroupsFromDataWithColor(List<int> data, Color primary) {
     final List<int> d = List<int>.from(data);
@@ -333,13 +269,20 @@ class _StatsOverviewPageState extends State<StatsOverviewPage> {
       final isDone = val >= 1.0;
       final color = isDone ? primary : Colors.grey.shade300;
       final height = isDone ? 1.0 : 0.18;
-      final rod = BarChartRodData(
-        toY: height,
-        width: 20,
-        borderRadius: BorderRadius.circular(6),
-        color: color,
-      );
+      final rod = BarChartRodData(toY: height, width: 18, borderRadius: BorderRadius.circular(6), color: color);
       return BarChartGroupData(x: i, barRods: [rod]);
     });
+  }
+
+  int _overallAveragePercent() {
+    if (_habits.isEmpty) return 0;
+    final totals = _habits.map((h) {
+      final d30 = _last30[h.id!] ?? List.filled(30, 0);
+      final sum = d30.fold<int>(0, (p, e) => p + e);
+      return ((sum / d30.length) * 100).round();
+    }).toList();
+    if (totals.isEmpty) return 0;
+    final avg = totals.reduce((a, b) => a + b) / totals.length;
+    return avg.round();
   }
 }

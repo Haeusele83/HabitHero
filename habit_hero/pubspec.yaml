@@ -19,6 +19,8 @@ dependencies:
   flutter_slidable: ^4.0.3
   google_fonts: ^5.0.0
 
+
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

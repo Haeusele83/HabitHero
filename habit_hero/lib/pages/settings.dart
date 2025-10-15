@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../main.dart'; // für ThemeNotifier
+import '../main.dart'; // für ThemeNotifier und AppSettingsNotifier
 
 class SettingsPage extends StatefulWidget {
   @override
@@ -8,17 +8,19 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  bool _compactMode = false;
+  bool _compactLocal = false;
 
   @override
   void initState() {
     super.initState();
-    // zukünftige Persistenz möglich (noch nicht persistent)
+    final appSettings = Provider.of<AppSettingsNotifier>(context, listen: false);
+    _compactLocal = appSettings.compactMode;
   }
 
   @override
   Widget build(BuildContext context) {
     final themeNotifier = Provider.of<ThemeNotifier>(context);
+    final appSettings = Provider.of<AppSettingsNotifier>(context);
     final isDark = themeNotifier.mode == ThemeMode.dark;
 
     return Scaffold(
@@ -39,13 +41,16 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             SizedBox(height: 8),
             Card(
-              child: ListTile(
-                title: Text('Design-Modus'),
-                subtitle: Text('Kompakte Listenansicht (experimentell)'),
-                trailing: Switch(
-                  value: _compactMode,
-                  onChanged: (v) => setState(() => _compactMode = v),
-                ),
+              child: SwitchListTile(
+                title: Text('Kompakte Ansicht'),
+                subtitle: Text('Weniger Abstände & kleinere UI-Elemente'),
+                value: appSettings.compactMode,
+                onChanged: (v) async {
+                  await appSettings.setCompactMode(v);
+                  setState(() {
+                    _compactLocal = v;
+                  });
+                },
               ),
             ),
             SizedBox(height: 12),
