@@ -1,6 +1,8 @@
 // lib/main.dart (komplett ersetzen)
-// UI-Polish + Overflow-Fixes (responsive, keine Right-Overflows)
+// Änderungen: kleinere linke Prozent-Anzeige, großer horizontaler Fortschrittsbalken oben,
+// größere Erledigt- & Löschen-Controls, Layout-Feinabstimmungen gegen Overflow.
 
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -152,7 +154,7 @@ class _EntryDeciderState extends State<EntryDecider> {
   }
 }
 
-/// --- HomePage mit UI-Polish + Overflow-Fixes ---
+/// --- HomePage ---
 class HomePage extends StatefulWidget {
   @override
   State<HomePage> createState() => _HomePageState();
@@ -204,7 +206,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ladefehler: $e')));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      setState(() => _loading = false);
     }
   }
 
@@ -226,6 +228,24 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     await _loadAll();
   }
 
+  Future<void> _confirmAndDelete(int id, String name) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: Text('Habit löschen'),
+        content: Text('Wirklich "$name" löschen? Diese Aktion kann nicht rückgängig gemacht werden.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dCtx).pop(false), child: Text('Abbrechen')),
+          ElevatedButton(onPressed: () => Navigator.of(dCtx).pop(true), child: Text('Löschen')),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _deleteHabit(id);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Habit gelöscht'), duration: Duration(seconds: 2)));
+    }
+  }
+
   Future<void> _showAddDialog() async {
     final ctrl = TextEditingController();
     final res = await showDialog<String?>(
@@ -242,7 +262,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
     if (res != null && res.trim().isNotEmpty) {
       await _addHabit(res);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Habit erstellt'), duration: Duration(milliseconds: 900)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Habit erstellt'), duration: Duration(milliseconds: 900)));
     }
   }
 
@@ -289,22 +309,26 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
     final cardPadding = compact ? 10.0 : 16.0;
     final tileFontSize = compact ? 14.0 : 16.0;
-    final double cardMinHeight = compact ? 86.0 : 110.0;
+    final double cardMinHeight = compact ? 100.0 : 126.0; // etwas höher wegen top-bar
     final overallPercent = _overallCompletionPercent().round();
+
+    // available width clamps
+    final screenW = MediaQuery.of(context).size.width;
+    final headerRightWidth = (screenW * 0.28).clamp(70.0, 120.0);
 
     return Scaffold(
       appBar: AppBar(
         elevation: 1,
-        leadingWidth: 120, // reduziert, um Platz bei kleinen Screens zu sparen
+        leadingWidth: 160,
         leading: Padding(
-          padding: EdgeInsets.only(left: 8),
+          padding: EdgeInsets.only(left: 12),
           child: Row(
             children: [
               Hero(
                 tag: 'logo-hero',
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.asset('assets/logo.png', width: compact ? 36 : 44, height: compact ? 36 : 44, fit: BoxFit.contain),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.asset('assets/logo.png', width: compact ? 40 : 48, height: compact ? 40 : 48, fit: BoxFit.contain),
                 ),
               ),
               SizedBox(width: 8),
@@ -328,129 +352,140 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             tooltip: 'Einstellungen',
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsPage())).then((_) => _loadAll()),
           ),
-          SizedBox(width: 6),
+          SizedBox(width: 8),
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(compact ? 10 : 16),
-          child: Column(
-            children: [
-              // Header card with overall percent
-              AnimatedContainer(
-                duration: Duration(milliseconds: 420),
-                curve: Curves.easeOutCubic,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: theme.cardColor,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))],
-                ),
-                padding: EdgeInsets.symmetric(horizontal: cardPadding, vertical: compact ? 12 : 16),
-                child: Row(
-                  children: [
-                    // Left: texts
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Guten Tag', style: TextStyle(fontSize: compact ? 14 : 16, color: Colors.grey[700])),
-                          SizedBox(height: 6),
-                          Text('Deine Gewohnheiten', style: TextStyle(fontSize: compact ? 18 : 20, fontWeight: FontWeight.w800)),
-                          SizedBox(height: 8),
-                          Text('Letzte Aktualisierung: ${_formatToday()}', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600])),
-                        ],
-                      ),
-                    ),
-
-                    // Right: animated circular percent (fixed box -> prevents overflow)
-                    SizedBox(
-                      width: compact ? 72 : 88,
-                      child: Column(
-                        children: [
-                          TweenAnimationBuilder<double>(
-                            tween: Tween(begin: 0.0, end: overallPercent / 100.0),
-                            duration: Duration(milliseconds: 800),
-                            builder: (context, val, _) {
-                              final p = (val * 100).round();
-                              return SizedBox(
-                                width: compact ? 56 : 72,
-                                height: compact ? 56 : 72,
-                                child: Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    CircularProgressIndicator(
-                                      value: val,
-                                      strokeWidth: compact ? 6 : 8,
-                                      backgroundColor: theme.colorScheme.onSurface.withOpacity(0.06),
-                                      valueColor: AlwaysStoppedAnimation(p >= 70 ? Colors.green : (p >= 40 ? Colors.orange : Colors.red)),
-                                    ),
-                                    Text('$p%', style: TextStyle(fontWeight: FontWeight.w700, fontSize: compact ? 12 : 14)),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                          SizedBox(height: 6),
-                          Text('Ø-Erf.', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600])),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+      body: Padding(
+        padding: EdgeInsets.all(compact ? 10 : 16),
+        child: Column(
+          children: [
+            // Header card (gleich wie vorher)
+            AnimatedContainer(
+              duration: Duration(milliseconds: 420),
+              curve: Curves.easeOutCubic,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))],
               ),
-
-              SizedBox(height: compact ? 10 : 12),
-
-              // Actions: Add + Tipps (Tipps ist nur IconButton, damit kein Overflow)
-              Row(
+              padding: EdgeInsets.symmetric(horizontal: cardPadding, vertical: compact ? 12 : 16),
+              child: Row(
                 children: [
+                  // left: flexible text
                   Expanded(
-                    child: ElevatedButton.icon(
-                      icon: Icon(Icons.add),
-                      label: Text('Neuer Habit'),
-                      style: ElevatedButton.styleFrom(padding: EdgeInsets.symmetric(vertical: compact ? 10 : 12)),
-                      onPressed: _showAddDialog,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Deine Gewohnheiten', style: TextStyle(fontSize: compact ? 16 : 18, fontWeight: FontWeight.w800)),
+                        SizedBox(height: 8),
+                        Text('${_habits.length} Habits • Letzte Aktualisierung: ${_formatToday()}', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600])),
+                        SizedBox(height: compact ? 8 : 12),
+                        Row(
+                          children: [
+                            _smallInfoChip(Icons.local_fire_department, 'Streaks', '0', compact),
+                            SizedBox(width: 8),
+                            _smallInfoChip(Icons.check_circle_outline, 'Erledigt heute', '0', compact),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(width: 8),
-                  // Icon-only to avoid long label overflow on small screens
-                  IconButton(
-                    icon: Icon(Icons.info_outline),
-                    tooltip: 'Tipps',
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnboardingPage())),
+
+                  // right: percent (clamped width to avoid overflow)
+                  SizedBox(
+                    width: headerRightWidth,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: overallPercent / 100.0),
+                          duration: Duration(milliseconds: 800),
+                          builder: (context, val, _) {
+                            final p = (val * 100).round();
+                            return Column(
+                              children: [
+                                SizedBox(
+                                  width: compact ? 56 : 72,
+                                  height: compact ? 56 : 72,
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      CircularProgressIndicator(
+                                        value: val,
+                                        strokeWidth: compact ? 6 : 8,
+                                        backgroundColor: theme.colorScheme.onSurface.withOpacity(0.06),
+                                        valueColor: AlwaysStoppedAnimation(p >= 70 ? Colors.green : (p >= 40 ? Colors.orange : Colors.red)),
+                                      ),
+                                      Text('$p%', style: TextStyle(fontWeight: FontWeight.w700, fontSize: compact ? 12 : 14)),
+                                    ],
+                                  ),
+                                ),
+                                SizedBox(height: 6),
+                                Text('Ø-Erf.', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600])),
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
+            ),
 
-              SizedBox(height: compact ? 10 : 12),
+            SizedBox(height: compact ? 10 : 14),
 
-              // Content area
-              Expanded(
-                child: _loading
-                    ? Center(child: CircularProgressIndicator())
-                    : _habits.isEmpty
-                        ? _buildEmptyState(context)
-                        : FadeTransition(
-                            opacity: CurvedAnimation(parent: _listAnimController, curve: Curves.easeIn),
-                            child: ListView.separated(
-                              itemCount: _habits.length,
-                              separatorBuilder: (_, __) => SizedBox(height: compact ? 8 : 10),
-                              itemBuilder: (ctx, i) {
-                                final h = _habits[i];
-                                final isOn = h.id != null && _checked.contains(h.id);
-                                final last7 = (h.id != null && _chartData.containsKey(h.id)) ? _chartData[h.id!]! : List.filled(7, 0);
+            // Action row
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: Icon(Icons.add, size: compact ? 18 : 20),
+                    label: Text('Neuen Habit'),
+                    style: ElevatedButton.styleFrom(padding: EdgeInsets.symmetric(vertical: compact ? 10 : 12)),
+                    onPressed: _showAddDialog,
+                  ),
+                ),
+                SizedBox(width: 12),
+                SizedBox(
+                  width: 110,
+                  child: OutlinedButton.icon(
+                    icon: Icon(Icons.info_outline, size: 18),
+                    label: FittedBox(fit: BoxFit.scaleDown, child: Text('Tipps')),
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnboardingPage())),
+                  ),
+                ),
+              ],
+            ),
 
-                                final int percent30 = _calcPercentFromList(last7);
-                                final int streak = _calcStreakFor7(last7);
+            SizedBox(height: compact ? 10 : 12),
 
-                                return _buildHabitCard(h, percent30, streak, last7, tileFontSize, cardMinHeight, compact, ctx, i);
-                              },
-                            ),
+            // Content
+            Expanded(
+              child: _loading
+                  ? Center(child: CircularProgressIndicator())
+                  : _habits.isEmpty
+                      ? _buildEmptyState(context)
+                      : FadeTransition(
+                          opacity: CurvedAnimation(parent: _listAnimController, curve: Curves.easeIn),
+                          child: ListView.separated(
+                            itemCount: _habits.length,
+                            separatorBuilder: (_, __) => SizedBox(height: compact ? 10 : 12),
+                            itemBuilder: (ctx, i) {
+                              final h = _habits[i];
+                              final isOn = h.id != null && _checked.contains(h.id);
+                              final last7 = (h.id != null && _chartData.containsKey(h.id)) ? _chartData[h.id!]! : List.filled(7, 0);
+
+                              final int percent30 = _calcPercentFromList(last7);
+                              final int streak = _calcStreakFor7(last7);
+
+                              return _buildHabitCard(h, percent30, streak, last7, tileFontSize, cardMinHeight, compact, ctx, i);
+                            },
                           ),
-              ),
-            ],
-          ),
+                        ),
+            ),
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -461,48 +496,63 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
+  Widget _smallInfoChip(IconData icon, String label, String value, bool compact) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 6),
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withOpacity(0.06), borderRadius: BorderRadius.circular(10)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: compact ? 14 : 16, color: Theme.of(context).primaryColor),
+          SizedBox(width: 8),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: TextStyle(fontSize: compact ? 11 : 12, color: Colors.grey[700])),
+            Text(value, style: TextStyle(fontSize: compact ? 12 : 13, fontWeight: FontWeight.w700)),
+          ])
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmptyState(BuildContext context) {
     final compact = Provider.of<AppSettingsNotifier>(context).compactMode;
+    final maxWidth = math.min(MediaQuery.of(context).size.width * 0.95, 460.0);
     return Center(
       child: SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: 560),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 6))],
-                ),
-                child: Column(
-                  children: [
-                    Icon(Icons.emoji_objects_outlined, size: 64, color: Colors.teal),
-                    SizedBox(height: 12),
-                    Text('Fange klein an', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                    SizedBox(height: 8),
-                    Text('Erstelle deinen ersten Habit und verfolge ihn täglich. Ich helfe dir dabei, dran zu bleiben.',
-                        textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[700])),
-                    SizedBox(height: 14),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 12,
-                      runSpacing: 8,
-                      children: [
-                        ElevatedButton.icon(onPressed: _showAddDialog, icon: Icon(Icons.add), label: Text('Erstellen')),
-                        OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnboardingPage())), icon: Icon(Icons.play_circle_outline), label: Text('Kurze Einführung')),
-                      ],
-                    ),
-                  ],
-                ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: maxWidth,
+              padding: EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 6))],
               ),
-              SizedBox(height: compact ? 12 : 18),
-              Text('Tipp: Beginne mit einer kleinen, konkreten Gewohnheit — z. B. 10 Minuten Bewegung.', style: TextStyle(color: Colors.grey[600])),
-            ],
-          ),
+              child: Column(
+                children: [
+                  Icon(Icons.emoji_objects_outlined, size: 64, color: Colors.teal),
+                  SizedBox(height: 12),
+                  Text('Fange klein an', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                  SizedBox(height: 8),
+                  Text('Erstelle deinen ersten Habit und verfolge ihn täglich. Ich helfe dir dabei, dran zu bleiben.',
+                      textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[700])),
+                  SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(onPressed: _showAddDialog, icon: Icon(Icons.add), label: Text('Erstellen')),
+                      SizedBox(width: 12),
+                      OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OnboardingPage())), icon: Icon(Icons.play_circle_outline), label: Text('Kurze Einführung')),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: compact ? 12 : 18),
+            Text('Tipp: Beginne mit einer kleinen, konkreten Gewohnheit — z. B. 10 Minuten Bewegung.', style: TextStyle(color: Colors.grey[600])),
+          ],
         ),
       ),
     );
@@ -510,134 +560,173 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Widget _buildHabitCard(Habit h, int percent30, int streak, List<int> last7, double tileFontSize, double cardMinHeight, bool compact, BuildContext ctx, int index) {
     final theme = Theme.of(context);
+    final screenW = MediaQuery.of(context).size.width;
+    final availableCardWidth = screenW - (compact ? 32 : 48);
+    final rightMax = (availableCardWidth * (compact ? 0.26 : 0.28)).clamp(84.0, 160.0);
 
     return LayoutBuilder(builder: (context, constraints) {
-      // use constraints.maxWidth (the real available width) to compute right area
-      final availableCardWidth = constraints.maxWidth;
-      final rightMax = (availableCardWidth * (compact ? 0.20 : 0.24)).clamp(70.0, 140.0);
-
-      return Slidable(
-        key: ValueKey(h.id ?? '${h.name}-$index'),
-        endActionPane: ActionPane(
-          motion: DrawerMotion(),
-          extentRatio: 0.34,
-          children: [
-            SlidableAction(
-              onPressed: (ctx) {
-                if (h.id != null) {
-                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => HabitDetailPage(habit: h))).then((_) => _loadAll());
-                }
-              },
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              icon: Icons.edit,
-              label: 'Details',
-            ),
-            SlidableAction(
-              onPressed: (ctx) async {
-                if (h.id != null) {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (dCtx) => AlertDialog(
-                      title: Text('Habit löschen'),
-                      content: Text('Wirklich "${h.name}" löschen?'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.of(dCtx).pop(false), child: Text('Abbrechen')),
-                        ElevatedButton(onPressed: () => Navigator.of(dCtx).pop(true), child: Text('Löschen')),
-                      ],
-                    ),
-                  );
-                  if (confirm == true) {
-                    await _deleteHabit(h.id!);
-                    ScaffoldMessenger.of(context).clearSnackBars();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Habit gelöscht'),
-                        action: SnackBarAction(label: 'Rückgängig', onPressed: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Bitte neu anlegen — Wiederherstellung nicht verfügbar.')))),
-                      ),
-                    );
+      return GestureDetector(
+        onLongPress: () {
+          if (h.id != null) _confirmAndDelete(h.id!, h.name);
+        },
+        child: Slidable(
+          key: ValueKey(h.id ?? '${h.name}-$index'),
+          endActionPane: ActionPane(
+            motion: DrawerMotion(),
+            extentRatio: 0.34,
+            children: [
+              SlidableAction(
+                onPressed: (ctx) {
+                  if (h.id != null) Navigator.of(context).push(MaterialPageRoute(builder: (_) => HabitDetailPage(habit: h))).then((_) => _loadAll());
+                },
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                icon: Icons.edit,
+                label: 'Details',
+              ),
+              SlidableAction(
+                onPressed: (ctx) async {
+                  if (h.id != null) {
+                    await _confirmAndDelete(h.id!, h.name);
                   }
-                }
-              },
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              icon: Icons.delete,
-              label: 'Löschen',
-            ),
-          ],
-        ),
-        child: AnimatedContainer(
-          duration: Duration(milliseconds: 420),
-          curve: Curves.easeOutCubic,
-          constraints: BoxConstraints(minHeight: cardMinHeight),
-          margin: EdgeInsets.symmetric(horizontal: 0),
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+                },
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                icon: Icons.delete,
+                label: 'Löschen',
+              ),
+            ],
           ),
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16, vertical: compact ? 10 : 14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+          child: AnimatedContainer(
+            duration: Duration(milliseconds: 420),
+            curve: Curves.easeOutCubic,
+            constraints: BoxConstraints(minHeight: cardMinHeight),
+            margin: EdgeInsets.symmetric(horizontal: 0),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // left: circular percent
-                SizedBox(
-                  width: compact ? 56 : 68,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                // Top progress bar (neu): zeigt Prozent als horizontalen Balken
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14, vertical: compact ? 10 : 12),
+                  child: Row(
                     children: [
-                      CircularProgressPercent(percent: percent30, size: compact ? 44 : 56),
-                      SizedBox(height: 8),
-                      Text('${percent30}%', style: TextStyle(fontSize: compact ? 11 : 12)),
-                    ],
-                  ),
-                ),
-
-                SizedBox(width: compact ? 12 : 16),
-
-                // middle: flexible column (title + streak + timeline)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Expanded(
-                          child: Text(
-                            h.name,
-                            style: TextStyle(fontSize: tileFontSize, fontWeight: FontWeight.w700),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                      Expanded(
+                        child: Container(
+                          height: compact ? 8 : 10,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).dividerColor.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: LinearProgressIndicator(
+                              value: (percent30.clamp(0, 100)) / 100.0,
+                              backgroundColor: Colors.transparent,
+                              valueColor: AlwaysStoppedAnimation(percent30 >= 70 ? Colors.green : (percent30 >= 40 ? Colors.orange : Colors.red)),
+                              minHeight: compact ? 8 : 10,
+                            ),
                           ),
                         ),
-                      ]),
-                      SizedBox(height: compact ? 6 : 8),
-                      Row(
-                        children: [
-                          Icon(Icons.local_fire_department, size: compact ? 14 : 16, color: streak > 0 ? Colors.orange : Colors.grey),
-                          SizedBox(width: 6),
-                          Flexible(child: Text('Streak: $streak', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600]))),
-                        ],
                       ),
-                      SizedBox(height: compact ? 8 : 10),
-                      HabitDotTimeline(data: last7, compact: compact),
+                      SizedBox(width: 10),
+                      // smaller circular percent to the right of the bar
+                      SizedBox(
+                        width: compact ? 44 : 52,
+                        child: Column(
+                          children: [
+                            CircularProgressPercent(percent: percent30, size: compact ? 36 : 44),
+                            SizedBox(height: 4),
+                            Text('${percent30}%', style: TextStyle(fontSize: compact ? 10 : 11)),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
 
-                SizedBox(width: 12),
+                // main content row
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16, vertical: compact ? 6 : 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // left: minimal small circle (we keep small visual - optional)
+                      SizedBox(width: compact ? 6 : 8),
 
-                // right: constrained button area
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: rightMax),
-                  child: HabitDoneButton(
-                    habitId: h.id,
-                    isDone: h.id != null && _checked.contains(h.id),
-                    compact: compact,
-                    onToggled: () async {
-                      if (h.id == null) return;
-                      await _toggleCheck(h.id!);
-                    },
+                      // middle: expandable column with title, streak, timeline
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Expanded(
+                                child: Text(
+                                  h.name,
+                                  style: TextStyle(fontSize: tileFontSize, fontWeight: FontWeight.w700),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ]),
+                            SizedBox(height: compact ? 6 : 8),
+                            Row(
+                              children: [
+                                Icon(Icons.local_fire_department, size: compact ? 14 : 16, color: streak > 0 ? Colors.orange : Colors.grey),
+                                SizedBox(width: 6),
+                                Text('Streak: $streak', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600])),
+                              ],
+                            ),
+                            SizedBox(height: compact ? 8 : 10),
+                            ConstrainedBox(
+                              constraints: BoxConstraints(maxWidth: math.max(140, MediaQuery.of(context).size.width * 0.5)),
+                              child: HabitDotTimeline(data: last7, compact: compact),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      SizedBox(width: 12),
+
+                      // right controls: Erledigt (grösser) + Löschen (grösser)
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: rightMax),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // bigger Erledigt button: we increase pref width and height
+                            HabitDoneButton(
+                              habitId: h.id,
+                              isDone: h.id != null && _checked.contains(h.id),
+                              compact: compact,
+                              bigger: true, // new parameter handled below
+                              onToggled: () async {
+                                if (h.id == null) return;
+                                await _toggleCheck(h.id!);
+                              },
+                            ),
+                            SizedBox(height: 8),
+                            // larger delete icon, with more spacing to avoid overlaps
+                            SizedBox(
+                              height: compact ? 40 : 44,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: BoxConstraints(minWidth: compact ? 40 : 44, minHeight: compact ? 40 : 44),
+                                icon: Icon(Icons.delete_outline, color: Colors.redAccent, size: compact ? 22 : 26),
+                                tooltip: 'Löschen',
+                                onPressed: () {
+                                  if (h.id != null) _confirmAndDelete(h.id!, h.name);
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -649,11 +738,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 }
 
-/// runde Prozent-Anzeige
+/// Circular percent widget (kleiner)
 class CircularProgressPercent extends StatelessWidget {
   final int percent;
   final double size;
-  const CircularProgressPercent({Key? key, required this.percent, this.size = 56}) : super(key: key);
+  const CircularProgressPercent({Key? key, required this.percent, this.size = 44}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -685,22 +774,14 @@ class CircularProgressPercent extends StatelessWidget {
   }
 }
 
-/// Dot timeline widget (7 Tage)
+/// HabitDotTimeline (wie zuvor)
 class HabitDotTimeline extends StatelessWidget {
   final List<int> data; // oldest -> newest
   final bool compact;
 
   const HabitDotTimeline({Key? key, required this.data, this.compact = false}) : super(key: key);
 
-  String _dateForIndex(int idx) {
-    final start = DateTime.now().subtract(Duration(days: 6));
-    final day = start.add(Duration(days: idx));
-    return '${day.day.toString().padLeft(2, '0')}.${day.month.toString().padLeft(2, '0')}.${day.year}';
-  }
-
-  String _weekdayShort(int idx) {
-    final start = DateTime.now().subtract(Duration(days: 6));
-    final day = start.add(Duration(days: idx));
+  String _weekdayShortForDate(DateTime day) {
     const names = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
     return names[(day.weekday - 1) % 7];
   }
@@ -709,93 +790,129 @@ class HabitDotTimeline extends StatelessWidget {
   Widget build(BuildContext context) {
     final d = List<int>.from(data);
     if (d.length < 7) d.insertAll(0, List<int>.filled(7 - d.length, 0));
+
     final dotSize = compact ? 14.0 : 18.0;
-    final labelSize = compact ? 10.0 : 12.0;
-    final gap = compact ? 6.0 : 8.0;
+    final weekdaySize = compact ? 10.0 : 12.0;
+    final dateSize = compact ? 11.0 : 12.0;
+    final gap = compact ? 8.0 : 10.0;
+
+    final start = DateTime.now().subtract(Duration(days: 6));
+    final days = List.generate(7, (i) => start.add(Duration(days: i)));
 
     return LayoutBuilder(builder: (context, constraints) {
       final avail = constraints.maxWidth;
-      final maxDotsWidth = 7 * dotSize;
-      final remaining = (avail - maxDotsWidth).clamp(0.0, avail);
-      final computedGap = (remaining / 6).clamp(4.0, gap);
+      final minTotalDotsWidth = 7 * dotSize + 6 * gap;
+      double computedGap = gap;
+      if (avail > minTotalDotsWidth) {
+        computedGap = ((avail - 7 * dotSize) / 6).clamp(gap, gap * 2.5);
+      } else {
+        computedGap = ((avail - 7 * dotSize) / 6).clamp(4.0, gap);
+      }
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            height: labelSize + 4,
+            height: weekdaySize + 6,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: List.generate(7, (i) {
+                final day = days[i];
+                final label = _weekdayShortForDate(day);
+                final isToday = _isSameDate(day, DateTime.now());
                 return Padding(
                   padding: EdgeInsets.only(right: i == 6 ? 0 : computedGap),
-                  child: SizedBox(width: dotSize, child: Center(child: Text(_weekdayShort(i), style: TextStyle(fontSize: labelSize, color: Colors.grey[700])))),
+                  child: SizedBox(
+                    width: dotSize + 6,
+                    child: Center(
+                      child: Text(label,
+                          style: TextStyle(
+                            fontSize: weekdaySize,
+                            color: isToday ? Theme.of(context).primaryColor : Colors.grey[700],
+                            fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+                          )),
+                    ),
+                  ),
                 );
               }),
             ),
           ),
           SizedBox(height: 6),
           SizedBox(
-            height: dotSize + 4,
-            child: Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                Positioned.fill(
-                  top: (dotSize / 2) + 2,
-                  bottom: null,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 0),
-                    child: Container(height: 2, color: Theme.of(context).dividerColor.withOpacity(0.12)),
-                  ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(7, (i) {
-                    final done = d[i] == 1;
-                    final color = done ? Theme.of(context).primaryColor : Colors.grey.shade300;
-                    final isToday = i == 6;
-                    return Padding(
-                      padding: EdgeInsets.only(right: i == 6 ? 0 : computedGap),
-                      child: GestureDetector(
-                        onTap: () {
-                          final date = _dateForIndex(i);
-                          final status = done ? 'Erledigt' : 'Nicht erledigt';
-                          final snack = SnackBar(content: Text('$date — $status'), duration: Duration(milliseconds: 900));
-                          ScaffoldMessenger.of(context).clearSnackBars();
-                          ScaffoldMessenger.of(context).showSnackBar(snack);
-                        },
-                        child: Container(
-                          width: dotSize,
-                          height: dotSize,
-                          decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
-                            border: isToday ? Border.all(color: Colors.black26, width: 1.2) : null,
-                            boxShadow: done ? [BoxShadow(color: color.withOpacity(0.22), blurRadius: 6, offset: Offset(0, 2))] : [],
-                          ),
-                          child: Center(child: done ? Icon(Icons.check, size: dotSize * 0.6, color: Colors.white) : SizedBox.shrink()),
-                        ),
+            height: dotSize + 8,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(7, (i) {
+                final done = d[i] == 1;
+                final day = days[i];
+                final isToday = _isSameDate(day, DateTime.now());
+                final color = done ? Theme.of(context).primaryColor : Colors.grey.shade300;
+                return Padding(
+                  padding: EdgeInsets.only(right: i == 6 ? 0 : computedGap),
+                  child: GestureDetector(
+                    onTap: () {
+                      final dateStr = '${day.day.toString().padLeft(2, '0')}.${day.month.toString().padLeft(2, '0')}.${day.year}';
+                      final status = done ? 'Erledigt' : 'Nicht erledigt';
+                      final snack = SnackBar(content: Text('$dateStr — $status'), duration: Duration(milliseconds: 900));
+                      ScaffoldMessenger.of(context).clearSnackBars();
+                      ScaffoldMessenger.of(context).showSnackBar(snack);
+                    },
+                    child: Container(
+                      width: dotSize,
+                      height: dotSize,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: isToday ? Border.all(color: Theme.of(context).primaryColor.withOpacity(0.9), width: 2.0) : null,
+                        boxShadow: done ? [BoxShadow(color: color.withOpacity(0.22), blurRadius: 6, offset: Offset(0, 2))] : [],
                       ),
-                    );
-                  }),
-                ),
-              ],
+                      child: Center(child: done ? Icon(Icons.check, size: dotSize * 0.6, color: Colors.white) : SizedBox.shrink()),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+          SizedBox(height: 6),
+          SizedBox(
+            height: dateSize + 6,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(7, (i) {
+                final day = days[i];
+                final isToday = _isSameDate(day, DateTime.now());
+                return Padding(
+                  padding: EdgeInsets.only(right: i == 6 ? 0 : computedGap),
+                  child: SizedBox(
+                    width: dotSize + 6,
+                    child: Center(
+                      child: Text('${day.day}',
+                          style: TextStyle(fontSize: dateSize, color: isToday ? Theme.of(context).primaryColor : Colors.grey[700], fontWeight: isToday ? FontWeight.w700 : FontWeight.w500)),
+                    ),
+                  ),
+                );
+              }),
             ),
           ),
         ],
       );
     });
   }
+
+  bool _isSameDate(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
 }
 
-/// Improved Done Button
+/// Done button (mit optional größerem Layout)
 class HabitDoneButton extends StatefulWidget {
   final int? habitId;
   final bool isDone;
   final bool compact;
+  final bool bigger;
   final Future<void> Function() onToggled;
 
-  const HabitDoneButton({Key? key, required this.habitId, required this.isDone, required this.onToggled, this.compact = false}) : super(key: key);
+  const HabitDoneButton({Key? key, required this.habitId, required this.isDone, required this.onToggled, this.compact = false, this.bigger = false}) : super(key: key);
 
   @override
   _HabitDoneButtonState createState() => _HabitDoneButtonState();
@@ -855,9 +972,10 @@ class _HabitDoneButtonState extends State<HabitDoneButton> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     final compact = widget.compact;
-    final minW = compact ? 44.0 : 52.0;
-    final prefW = compact ? 110.0 : 140.0;
-    final height = compact ? 36.0 : 42.0;
+    final bigger = widget.bigger;
+    final minW = compact ? (bigger ? 64.0 : 44.0) : (bigger ? 84.0 : 52.0);
+    final prefW = compact ? (bigger ? 140.0 : 110.0) : (bigger ? 160.0 : 140.0);
+    final height = compact ? (bigger ? 44.0 : 36.0) : (bigger ? 48.0 : 42.0);
 
     return LayoutBuilder(builder: (context, constraints) {
       final maxW = constraints.maxWidth.isFinite ? constraints.maxWidth : prefW;
@@ -876,10 +994,10 @@ class _HabitDoneButtonState extends State<HabitDoneButton> with SingleTickerProv
             decoration: BoxDecoration(
               color: _done ? Colors.green : Colors.transparent,
               borderRadius: BorderRadius.circular(height / 2),
-              border: Border.all(color: _done ? Colors.green : Colors.grey.shade400, width: 1.2),
+              border: Border.all(color: _done ? Colors.green : Colors.grey.shade400, width: 1.4),
               boxShadow: _done ? [BoxShadow(color: Colors.green.withOpacity(0.18), blurRadius: 8, offset: Offset(0, 4))] : [],
             ),
-            padding: EdgeInsets.symmetric(horizontal: 8),
+            padding: EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               mainAxisSize: showText ? MainAxisSize.max : MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
