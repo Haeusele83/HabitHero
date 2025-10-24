@@ -1,6 +1,5 @@
 // lib/main.dart (komplett ersetzen)
-// Änderungen: kleinere linke Prozent-Anzeige, großer horizontaler Fortschrittsbalken oben,
-// größere Erledigt- & Löschen-Controls, Layout-Feinabstimmungen gegen Overflow.
+// Wichtig: ersetzt die bisherige Datei. Enthält verbesserte HabitDotTimeline (7 gleiche Spalten).
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -307,14 +306,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     final appSettings = Provider.of<AppSettingsNotifier>(context);
     final compact = appSettings.compactMode;
 
-    final cardPadding = compact ? 10.0 : 16.0;
     final tileFontSize = compact ? 14.0 : 16.0;
-    final double cardMinHeight = compact ? 100.0 : 126.0; // etwas höher wegen top-bar
+    final double cardMinHeight = compact ? 94.0 : 120.0;
     final overallPercent = _overallCompletionPercent().round();
-
-    // available width clamps
-    final screenW = MediaQuery.of(context).size.width;
-    final headerRightWidth = (screenW * 0.28).clamp(70.0, 120.0);
 
     return Scaffold(
       appBar: AppBar(
@@ -359,7 +353,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         padding: EdgeInsets.all(compact ? 10 : 16),
         child: Column(
           children: [
-            // Header card (gleich wie vorher)
+            // Header card (kompakt)
             AnimatedContainer(
               duration: Duration(milliseconds: 420),
               curve: Curves.easeOutCubic,
@@ -369,32 +363,19 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))],
               ),
-              padding: EdgeInsets.symmetric(horizontal: cardPadding, vertical: compact ? 12 : 16),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: compact ? 12 : 16),
               child: Row(
                 children: [
-                  // left: flexible text
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Deine Gewohnheiten', style: TextStyle(fontSize: compact ? 16 : 18, fontWeight: FontWeight.w800)),
-                        SizedBox(height: 8),
-                        Text('${_habits.length} Habits • Letzte Aktualisierung: ${_formatToday()}', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600])),
-                        SizedBox(height: compact ? 8 : 12),
-                        Row(
-                          children: [
-                            _smallInfoChip(Icons.local_fire_department, 'Streaks', '0', compact),
-                            SizedBox(width: 8),
-                            _smallInfoChip(Icons.check_circle_outline, 'Erledigt heute', '0', compact),
-                          ],
-                        ),
-                      ],
-                    ),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Deine Gewohnheiten', style: TextStyle(fontSize: compact ? 16 : 18, fontWeight: FontWeight.w800)),
+                      SizedBox(height: 8),
+                      Text('${_habits.length} Habits • Letzte Aktualisierung: ${_formatToday()}', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600])),
+                    ]),
                   ),
-
-                  // right: percent (clamped width to avoid overflow)
+                  SizedBox(width: 8),
                   SizedBox(
-                    width: headerRightWidth,
+                    width: (MediaQuery.of(context).size.width * 0.24).clamp(68.0, 120.0),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -406,8 +387,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                             return Column(
                               children: [
                                 SizedBox(
-                                  width: compact ? 56 : 72,
-                                  height: compact ? 56 : 72,
+                                  width: compact ? 48 : 64,
+                                  height: compact ? 48 : 64,
                                   child: Stack(
                                     alignment: Alignment.center,
                                     children: [
@@ -496,24 +477,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _smallInfoChip(IconData icon, String label, String value, bool compact) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 6),
-      decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withOpacity(0.06), borderRadius: BorderRadius.circular(10)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: compact ? 14 : 16, color: Theme.of(context).primaryColor),
-          SizedBox(width: 8),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: TextStyle(fontSize: compact ? 11 : 12, color: Colors.grey[700])),
-            Text(value, style: TextStyle(fontSize: compact ? 12 : 13, fontWeight: FontWeight.w700)),
-          ])
-        ],
-      ),
-    );
-  }
-
   Widget _buildEmptyState(BuildContext context) {
     final compact = Provider.of<AppSettingsNotifier>(context).compactMode;
     final maxWidth = math.min(MediaQuery.of(context).size.width * 0.95, 460.0);
@@ -559,12 +522,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildHabitCard(Habit h, int percent30, int streak, List<int> last7, double tileFontSize, double cardMinHeight, bool compact, BuildContext ctx, int index) {
-    final theme = Theme.of(context);
-    final screenW = MediaQuery.of(context).size.width;
-    final availableCardWidth = screenW - (compact ? 32 : 48);
-    final rightMax = (availableCardWidth * (compact ? 0.26 : 0.28)).clamp(84.0, 160.0);
-
     return LayoutBuilder(builder: (context, constraints) {
+      final maxCardWidth = constraints.maxWidth.isFinite ? constraints.maxWidth : MediaQuery.of(context).size.width;
+
       return GestureDetector(
         onLongPress: () {
           if (h.id != null) _confirmAndDelete(h.id!, h.name);
@@ -598,138 +558,65 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             ],
           ),
           child: AnimatedContainer(
-            duration: Duration(milliseconds: 420),
+            duration: Duration(milliseconds: 320),
             curve: Curves.easeOutCubic,
             constraints: BoxConstraints(minHeight: cardMinHeight),
             margin: EdgeInsets.symmetric(horizontal: 0),
             decoration: BoxDecoration(
-              color: theme.cardColor,
+              color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(12),
               boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Top progress bar (neu): zeigt Prozent als horizontalen Balken
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14, vertical: compact ? 10 : 12),
-                  child: Row(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16, vertical: compact ? 10 : 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Titel
+                  Text(h.name, style: TextStyle(fontSize: tileFontSize, fontWeight: FontWeight.w700)),
+                  SizedBox(height: compact ? 6 : 8),
+                  Row(children: [
+                    Icon(Icons.local_fire_department, size: compact ? 14 : 16, color: streak > 0 ? Colors.orange : Colors.grey),
+                    SizedBox(width: 8),
+                    Text('Streak: $streak', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600])),
+                  ]),
+                  SizedBox(height: compact ? 8 : 10),
+
+                  // Timeline (überarbeitete, spaltengleiche Darstellung)
+                  HabitDotTimeline(data: last7, compact: compact),
+                  SizedBox(height: compact ? 10 : 14),
+
+                  // ACTIONS: Erledigt + Löschen unterhalb der Timeline, rechts ausgerichtet
+                  Row(
                     children: [
-                      Expanded(
-                        child: Container(
-                          height: compact ? 8 : 10,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).dividerColor.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: LinearProgressIndicator(
-                              value: (percent30.clamp(0, 100)) / 100.0,
-                              backgroundColor: Colors.transparent,
-                              valueColor: AlwaysStoppedAnimation(percent30 >= 70 ? Colors.green : (percent30 >= 40 ? Colors.orange : Colors.red)),
-                              minHeight: compact ? 8 : 10,
-                            ),
-                          ),
-                        ),
+                      Expanded(child: SizedBox()), // so schieben wir die Buttons nach rechts
+                      HabitDoneButton(
+                        habitId: h.id,
+                        isDone: h.id != null && _checked.contains(h.id),
+                        compact: compact,
+                        bigger: true,
+                        onToggled: () async {
+                          if (h.id == null) return;
+                          await _toggleCheck(h.id!);
+                        },
                       ),
-                      SizedBox(width: 10),
-                      // smaller circular percent to the right of the bar
-                      SizedBox(
-                        width: compact ? 44 : 52,
-                        child: Column(
-                          children: [
-                            CircularProgressPercent(percent: percent30, size: compact ? 36 : 44),
-                            SizedBox(height: 4),
-                            Text('${percent30}%', style: TextStyle(fontSize: compact ? 10 : 11)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // main content row
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16, vertical: compact ? 6 : 10),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // left: minimal small circle (we keep small visual - optional)
-                      SizedBox(width: compact ? 6 : 8),
-
-                      // middle: expandable column with title, streak, timeline
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(children: [
-                              Expanded(
-                                child: Text(
-                                  h.name,
-                                  style: TextStyle(fontSize: tileFontSize, fontWeight: FontWeight.w700),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ]),
-                            SizedBox(height: compact ? 6 : 8),
-                            Row(
-                              children: [
-                                Icon(Icons.local_fire_department, size: compact ? 14 : 16, color: streak > 0 ? Colors.orange : Colors.grey),
-                                SizedBox(width: 6),
-                                Text('Streak: $streak', style: TextStyle(fontSize: compact ? 12 : 13, color: Colors.grey[600])),
-                              ],
-                            ),
-                            SizedBox(height: compact ? 8 : 10),
-                            ConstrainedBox(
-                              constraints: BoxConstraints(maxWidth: math.max(140, MediaQuery.of(context).size.width * 0.5)),
-                              child: HabitDotTimeline(data: last7, compact: compact),
-                            ),
-                          ],
-                        ),
-                      ),
-
                       SizedBox(width: 12),
-
-                      // right controls: Erledigt (grösser) + Löschen (grösser)
-                      ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: rightMax),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // bigger Erledigt button: we increase pref width and height
-                            HabitDoneButton(
-                              habitId: h.id,
-                              isDone: h.id != null && _checked.contains(h.id),
-                              compact: compact,
-                              bigger: true, // new parameter handled below
-                              onToggled: () async {
-                                if (h.id == null) return;
-                                await _toggleCheck(h.id!);
-                              },
-                            ),
-                            SizedBox(height: 8),
-                            // larger delete icon, with more spacing to avoid overlaps
-                            SizedBox(
-                              height: compact ? 40 : 44,
-                              child: IconButton(
-                                padding: EdgeInsets.zero,
-                                constraints: BoxConstraints(minWidth: compact ? 40 : 44, minHeight: compact ? 40 : 44),
-                                icon: Icon(Icons.delete_outline, color: Colors.redAccent, size: compact ? 22 : 26),
-                                tooltip: 'Löschen',
-                                onPressed: () {
-                                  if (h.id != null) _confirmAndDelete(h.id!, h.name);
-                                },
-                              ),
-                            ),
-                          ],
+                      SizedBox(
+                        height: compact ? 40 : 44,
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: BoxConstraints(minWidth: compact ? 40 : 44, minHeight: compact ? 40 : 44),
+                          icon: Icon(Icons.delete_outline, color: Colors.redAccent, size: compact ? 22 : 26),
+                          tooltip: 'Löschen',
+                          onPressed: () {
+                            if (h.id != null) _confirmAndDelete(h.id!, h.name);
+                          },
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -738,43 +625,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 }
 
-/// Circular percent widget (kleiner)
-class CircularProgressPercent extends StatelessWidget {
-  final int percent;
-  final double size;
-  const CircularProgressPercent({Key? key, required this.percent, this.size = 44}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final double value = (percent.clamp(0, 100)) / 100.0;
-    final color = percent >= 70 ? Colors.green : (percent >= 40 ? Colors.orange : Colors.red);
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          SizedBox(
-            width: size,
-            height: size,
-            child: CircularProgressIndicator(
-              value: value,
-              strokeWidth: size * 0.12,
-              backgroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.06),
-              valueColor: AlwaysStoppedAnimation(color),
-            ),
-          ),
-          Text(
-            '$percent',
-            style: TextStyle(fontSize: size * 0.28, fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// HabitDotTimeline (wie zuvor)
+/// HabitDotTimeline — überarbeitet: 7 gleiche Spalten (Weekday, Dot, Day)
 class HabitDotTimeline extends StatelessWidget {
   final List<int> data; // oldest -> newest
   final bool compact;
@@ -786,6 +637,10 @@ class HabitDotTimeline extends StatelessWidget {
     return names[(day.weekday - 1) % 7];
   }
 
+  bool _isSameDate(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
   @override
   Widget build(BuildContext context) {
     final d = List<int>.from(data);
@@ -794,117 +649,90 @@ class HabitDotTimeline extends StatelessWidget {
     final dotSize = compact ? 14.0 : 18.0;
     final weekdaySize = compact ? 10.0 : 12.0;
     final dateSize = compact ? 11.0 : 12.0;
-    final gap = compact ? 8.0 : 10.0;
 
     final start = DateTime.now().subtract(Duration(days: 6));
     final days = List.generate(7, (i) => start.add(Duration(days: i)));
 
-    return LayoutBuilder(builder: (context, constraints) {
-      final avail = constraints.maxWidth;
-      final minTotalDotsWidth = 7 * dotSize + 6 * gap;
-      double computedGap = gap;
-      if (avail > minTotalDotsWidth) {
-        computedGap = ((avail - 7 * dotSize) / 6).clamp(gap, gap * 2.5);
-      } else {
-        computedGap = ((avail - 7 * dotSize) / 6).clamp(4.0, gap);
-      }
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: weekdaySize + 6,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(7, (i) {
-                final day = days[i];
-                final label = _weekdayShortForDate(day);
-                final isToday = _isSameDate(day, DateTime.now());
-                return Padding(
-                  padding: EdgeInsets.only(right: i == 6 ? 0 : computedGap),
-                  child: SizedBox(
-                    width: dotSize + 6,
-                    child: Center(
-                      child: Text(label,
-                          style: TextStyle(
-                            fontSize: weekdaySize,
-                            color: isToday ? Theme.of(context).primaryColor : Colors.grey[700],
-                            fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
-                          )),
+    // Build 3 rows but ensure each column has exactly same width via Expanded
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Row 1: Weekday labels
+        Row(
+          children: List.generate(7, (i) {
+            final day = days[i];
+            final label = _weekdayShortForDate(day);
+            final isToday = _isSameDate(day, DateTime.now());
+            return Expanded(
+              child: Center(
+                child: Text(label,
+                    style: TextStyle(
+                      fontSize: weekdaySize,
+                      color: isToday ? Theme.of(context).primaryColor : Colors.grey[700],
+                      fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+                    )),
+              ),
+            );
+          }),
+        ),
+        SizedBox(height: 6),
+        // Row 2: Dots
+        Row(
+          children: List.generate(7, (i) {
+            final done = d[i] == 1;
+            final day = days[i];
+            final isToday = _isSameDate(day, DateTime.now());
+            final color = done ? Theme.of(context).primaryColor : Colors.grey.shade300;
+            return Expanded(
+              child: Center(
+                child: GestureDetector(
+                  onTap: () {
+                    final dateStr = '${day.day.toString().padLeft(2, '0')}.${day.month.toString().padLeft(2, '0')}.${day.year}';
+                    final status = done ? 'Erledigt' : 'Nicht erledigt';
+                    final snack = SnackBar(content: Text('$dateStr — $status'), duration: Duration(milliseconds: 900));
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(snack);
+                  },
+                  child: Container(
+                    width: dotSize,
+                    height: dotSize,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                      border: isToday ? Border.all(color: Theme.of(context).primaryColor.withOpacity(0.9), width: 2.0) : null,
+                      boxShadow: done ? [BoxShadow(color: color.withOpacity(0.22), blurRadius: 6, offset: Offset(0, 2))] : [],
                     ),
+                    child: Center(child: done ? Icon(Icons.check, size: dotSize * 0.6, color: Colors.white) : SizedBox.shrink()),
                   ),
-                );
-              }),
-            ),
-          ),
-          SizedBox(height: 6),
-          SizedBox(
-            height: dotSize + 8,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(7, (i) {
-                final done = d[i] == 1;
-                final day = days[i];
-                final isToday = _isSameDate(day, DateTime.now());
-                final color = done ? Theme.of(context).primaryColor : Colors.grey.shade300;
-                return Padding(
-                  padding: EdgeInsets.only(right: i == 6 ? 0 : computedGap),
-                  child: GestureDetector(
-                    onTap: () {
-                      final dateStr = '${day.day.toString().padLeft(2, '0')}.${day.month.toString().padLeft(2, '0')}.${day.year}';
-                      final status = done ? 'Erledigt' : 'Nicht erledigt';
-                      final snack = SnackBar(content: Text('$dateStr — $status'), duration: Duration(milliseconds: 900));
-                      ScaffoldMessenger.of(context).clearSnackBars();
-                      ScaffoldMessenger.of(context).showSnackBar(snack);
-                    },
-                    child: Container(
-                      width: dotSize,
-                      height: dotSize,
-                      decoration: BoxDecoration(
-                        color: color,
-                        shape: BoxShape.circle,
-                        border: isToday ? Border.all(color: Theme.of(context).primaryColor.withOpacity(0.9), width: 2.0) : null,
-                        boxShadow: done ? [BoxShadow(color: color.withOpacity(0.22), blurRadius: 6, offset: Offset(0, 2))] : [],
-                      ),
-                      child: Center(child: done ? Icon(Icons.check, size: dotSize * 0.6, color: Colors.white) : SizedBox.shrink()),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-          SizedBox(height: 6),
-          SizedBox(
-            height: dateSize + 6,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(7, (i) {
-                final day = days[i];
-                final isToday = _isSameDate(day, DateTime.now());
-                return Padding(
-                  padding: EdgeInsets.only(right: i == 6 ? 0 : computedGap),
-                  child: SizedBox(
-                    width: dotSize + 6,
-                    child: Center(
-                      child: Text('${day.day}',
-                          style: TextStyle(fontSize: dateSize, color: isToday ? Theme.of(context).primaryColor : Colors.grey[700], fontWeight: isToday ? FontWeight.w700 : FontWeight.w500)),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ],
-      );
-    });
-  }
-
-  bool _isSameDate(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
+                ),
+              ),
+            );
+          }),
+        ),
+        SizedBox(height: 6),
+        // Row 3: Date numbers
+        Row(
+          children: List.generate(7, (i) {
+            final day = days[i];
+            final isToday = _isSameDate(day, DateTime.now());
+            return Expanded(
+              child: Center(
+                child: Text('${day.day}',
+                    style: TextStyle(
+                      fontSize: dateSize,
+                      color: isToday ? Theme.of(context).primaryColor : Colors.grey[700],
+                      fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
+                    )),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
   }
 }
 
-/// Done button (mit optional größerem Layout)
+/// HabitDoneButton (wie vorher)
 class HabitDoneButton extends StatefulWidget {
   final int? habitId;
   final bool isDone;
