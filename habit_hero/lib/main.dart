@@ -1,6 +1,8 @@
 // lib/main.dart (komplett ersetzen)
-// Wichtig: ersetzt die bisherige Datei. Enthält verbesserte HabitDotTimeline (7 gleiche Spalten).
+// Enthält: pro-habit Settings-Button + "Heute aktiv"-Badge (Schedule aus SharedPreferences)
+// Achtung: HabitDetailPage muss in lib/pages/habit_detail.dart vorhanden sein (wie zuvor).
 
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -153,7 +155,7 @@ class _EntryDeciderState extends State<EntryDecider> {
   }
 }
 
-/// --- HomePage ---
+/// --- HomePage (mit Settings-Button & "Heute aktiv" Badges) ---
 class HomePage extends StatefulWidget {
   @override
   State<HomePage> createState() => _HomePageState();
@@ -165,6 +167,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Set<int> _checked = {};
   Map<int, List<int>> _chartData = {};
   bool _loading = true;
+  Map<int, bool> _activeToday = {}; // habitId -> is active today (Schedule)
 
   late final AnimationController _listAnimController;
 
@@ -181,6 +184,44 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  // prüft anhand der in SharedPreferences gespeicherten Schedule, ob Habit heute aktiv ist
+  bool _evaluateScheduleActiveToday(Map<String, dynamic>? scheduleMap) {
+    if (scheduleMap == null) return true; // keine Beschränkung -> aktiv
+    final List<dynamic>? repeatDays = scheduleMap['repeatDays'] as List<dynamic>?;
+    final String? startTime = scheduleMap['startTime'] as String?;
+    final String? endTime = scheduleMap['endTime'] as String?;
+
+    final now = DateTime.now();
+    final weekdayIndex = (now.weekday - 1) % 7; // Mo=0
+
+    // If repeatDays provided and contains any '1', respect those; otherwise no restriction
+    if (repeatDays != null && repeatDays.isNotEmpty && repeatDays.any((e) => e == 1 || e == true)) {
+      final entry = repeatDays.length > weekdayIndex ? repeatDays[weekdayIndex] : 0;
+      if (!(entry == 1 || entry == true)) return false;
+    }
+
+    // If a time window is provided, check it
+    if (startTime != null && startTime.isNotEmpty && endTime != null && endTime.isNotEmpty) {
+      try {
+        final sParts = startTime.split(':');
+        final eParts = endTime.split(':');
+        final sHour = int.parse(sParts[0]);
+        final sMin = int.parse(sParts[1]);
+        final eHour = int.parse(eParts[0]);
+        final eMin = int.parse(eParts[1]);
+        final start = DateTime(now.year, now.month, now.day, sHour, sMin);
+        final end = DateTime(now.year, now.month, now.day, eHour, eMin);
+        if (!(now.isAtSameMomentAs(start) || (now.isAfter(start) && now.isBefore(end)) || now.isAtSameMomentAs(end))) {
+          return false;
+        }
+      } catch (e) {
+        // parse error -> ignore time window
+      }
+    }
+
+    return true;
+  }
+
   Future<void> _loadAll() async {
     setState(() => _loading = true);
     try {
@@ -189,16 +230,36 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       final checkedToday = await _db.getCheckedForDay(todayStr);
 
       final Map<int, List<int>> charts = {};
+      final Map<int, bool> activeMap = {};
+      final sp = await SharedPreferences.getInstance();
+
       for (final h in habits) {
         if (h.id == null) continue;
         final last7 = await _db.getChecksForLastNDays(h.id!, 7);
         charts[h.id!] = last7;
+
+        final schedKey = 'habit_sched_${h.id ?? h.name}';
+        final raw = sp.getString(schedKey);
+        Map<String, dynamic>? sched;
+        if (raw != null) {
+          try {
+            sched = jsonDecode(raw) as Map<String, dynamic>;
+          } catch (_) {
+            sched = null;
+          }
+        } else {
+          sched = null;
+        }
+
+        final isActive = _evaluateScheduleActiveToday(sched);
+        activeMap[h.id!] = isActive;
       }
 
       setState(() {
         _habits = habits;
         _checked = checkedToday.toSet();
         _chartData = charts;
+        _activeToday = activeMap;
       });
 
       if (_habits.isNotEmpty) _listAnimController.forward(from: 0.0);
@@ -522,6 +583,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildHabitCard(Habit h, int percent30, int streak, List<int> last7, double tileFontSize, double cardMinHeight, bool compact, BuildContext ctx, int index) {
+    final isActive = (h.id != null && _activeToday.containsKey(h.id)) ? _activeToday[h.id!] ?? true : true;
+
     return LayoutBuilder(builder: (context, constraints) {
       final maxCardWidth = constraints.maxWidth.isFinite ? constraints.maxWidth : MediaQuery.of(context).size.width;
 
@@ -572,9 +635,43 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Titel
-                  Text(h.name, style: TextStyle(fontSize: tileFontSize, fontWeight: FontWeight.w700)),
+                  // Titel + "Heute aktiv" Badge (wenn aktiv)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Row(children: [
+                          Flexible(
+                            child: Text(h.name, style: TextStyle(fontSize: tileFontSize, fontWeight: FontWeight.w700)),
+                          ),
+                          SizedBox(width: 8),
+                          if (isActive)
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green.shade200)),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.check_circle, size: 14, color: Colors.green.shade700),
+                                  SizedBox(width: 6),
+                                  Text('Heute aktiv', style: TextStyle(fontSize: 12, color: Colors.green.shade800)),
+                                ],
+                              ),
+                            ),
+                        ]),
+                      ),
+                      // Settings-Button (Zahnrad) pro Habit
+                      IconButton(
+                        tooltip: 'Einstellungen',
+                        onPressed: () {
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => HabitDetailPage(habit: h))).then((_) => _loadAll());
+                        },
+                        icon: Icon(Icons.settings_outlined),
+                      ),
+                    ],
+                  ),
+
                   SizedBox(height: compact ? 6 : 8),
+
                   Row(children: [
                     Icon(Icons.local_fire_department, size: compact ? 14 : 16, color: streak > 0 ? Colors.orange : Colors.grey),
                     SizedBox(width: 8),
@@ -625,7 +722,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 }
 
-/// HabitDotTimeline — überarbeitet: 7 gleiche Spalten (Weekday, Dot, Day)
+/// HabitDotTimeline — 7 gleiche Spalten (Weekday, Dot, Day)
 class HabitDotTimeline extends StatelessWidget {
   final List<int> data; // oldest -> newest
   final bool compact;
@@ -653,11 +750,9 @@ class HabitDotTimeline extends StatelessWidget {
     final start = DateTime.now().subtract(Duration(days: 6));
     final days = List.generate(7, (i) => start.add(Duration(days: i)));
 
-    // Build 3 rows but ensure each column has exactly same width via Expanded
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Row 1: Weekday labels
         Row(
           children: List.generate(7, (i) {
             final day = days[i];
@@ -676,7 +771,6 @@ class HabitDotTimeline extends StatelessWidget {
           }),
         ),
         SizedBox(height: 6),
-        // Row 2: Dots
         Row(
           children: List.generate(7, (i) {
             final done = d[i] == 1;
@@ -710,7 +804,6 @@ class HabitDotTimeline extends StatelessWidget {
           }),
         ),
         SizedBox(height: 6),
-        // Row 3: Date numbers
         Row(
           children: List.generate(7, (i) {
             final day = days[i];
