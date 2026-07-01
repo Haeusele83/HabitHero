@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HabitHero – Kleine Gewohnheiten. Grosse Veränderung.</title>
+  <meta name="description" content="HabitHero ist eine moderne Web-App zum Aufbau positiver Gewohnheiten mit Fortschritt, Statistik, XP, Leveln und Badges." />
+  <meta name="theme-color" content="#37c83f" />
+  <link rel="icon" type="image/png" href="assets/favicon.png" />
+  <link rel="apple-touch-icon" href="assets/favicon.png" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#mainContent">Direkt zum Inhalt</a>
+
+  <div class="app-shell">
+    <header class="site-header" aria-label="HabitHero Kopfbereich">
+      <nav class="topbar" aria-label="Hauptnavigation">
+        <a class="brand" href="#dashboard" data-route="dashboard" aria-label="HabitHero Dashboard öffnen">
+          <img src="assets/logo-icon.png" alt="" />
+          <span><strong>Habit</strong>Hero</span>
+        </a>
+
+        <div class="topbar-tabs" role="tablist" aria-label="App Bereiche">
+          <button class="nav-tab is-active" type="button" data-route="dashboard" role="tab">Dashboard</button>
+          <button class="nav-tab" type="button" data-route="stats" role="tab">Statistik</button>
+          <button class="nav-tab" type="button" data-route="badges" role="tab">Badges</button>
+          <button class="nav-tab" type="button" data-route="guide" role="tab">Anleitung</button>
+        </div>
+
+        <div class="topbar-actions">
+          <button class="button button-ghost" type="button" id="loadDemoBtn">Demo</button>
+          <button class="button button-primary" type="button" id="openCreateHabit">+ Habit</button>
+        </div>
+      </nav>
+
+      <section class="hero" aria-labelledby="heroTitle">
+        <div class="hero-copy">
+          <p class="eyebrow">MVP Web-App für dein Integrationsprojekt</p>
+          <h1 id="heroTitle">Kleine Gewohnheiten. <span>Grosse Veränderung.</span></h1>
+          <p>
+            HabitHero macht tägliche Routinen sichtbar, motivierend und messbar – mit klarer Habit-Verwaltung,
+            Tagesfortschritt, Statistik, XP, Leveln und Badges.
+          </p>
+          <div class="hero-actions">
+            <button class="button button-primary button-large" type="button" id="heroCreateHabit">Habit erfassen</button>
+            <button class="button button-secondary button-large" type="button" id="heroDemoBtn">Demo-Daten laden</button>
+          </div>
+        </div>
+
+        <aside class="hero-visual" aria-label="Tagesfortschritt">
+          <img class="hero-logo" src="assets/logo-full.png" alt="HabitHero Logo mit Slogan Kleine Gewohnheiten. Grosse Veränderung." />
+          <div class="progress-card">
+            <div class="progress-ring" id="heroProgressRing" aria-hidden="true">
+              <span id="heroProgressValue">0%</span>
+            </div>
+            <div>
+              <p class="progress-label">Heute erledigt</p>
+              <strong id="heroProgressText">0 von 0 Habits</strong>
+              <span id="heroMotivation">Starte mit einer kleinen Routine.</span>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </header>
+
+    <main id="mainContent" class="main-content">
+      <section class="metric-grid" aria-label="Kurzkennzahlen">
+        <article class="metric-card">
+          <span class="metric-icon">🔥</span>
+          <p>Aktuelle Serie</p>
+          <strong id="currentStreak">0 Tage</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-icon">⭐</span>
+          <p>Gesammelte XP</p>
+          <strong id="xpValue">0 XP</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-icon">🚀</span>
+          <p>Level</p>
+          <strong id="levelValue">Level 1</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-icon">🏅</span>
+          <p>Badges</p>
+          <strong id="badgeCount">0 / 9</strong>
+        </article>
+      </section>
+
+      <section class="view is-active" id="dashboardView" aria-labelledby="dashboardTitle">
+        <div class="dashboard-layout">
+          <section class="panel habits-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Heute</p>
+                <h2 id="dashboardTitle">Deine Habits</h2>
+              </div>
+              <div class="filter-group" aria-label="Habit-Filter">
+                <button class="filter is-active" type="button" data-filter="all">Alle</button>
+                <button class="filter" type="button" data-filter="open">Offen</button>
+                <button class="filter" type="button" data-filter="done">Erledigt</button>
+              </div>
+            </div>
+
+            <label class="search-field" for="habitSearch">
+              <span class="visually-hidden">Habits suchen</span>
+              <input id="habitSearch" type="search" placeholder="Habit suchen, z. B. Sport, Lesen, Wasser …" autocomplete="off" />
+            </label>
+
+            <div class="habit-list" id="habitList"></div>
+          </section>
+
+          <aside class="side-column" aria-label="Tagesfokus und Motivation">
+            <article class="panel focus-card">
+              <p class="eyebrow">Fokus</p>
+              <h2 id="focusTitle">Heute starten</h2>
+              <p id="focusText">Erfasse einen Habit und beginne mit einem kleinen, realistischen Schritt.</p>
+              <div class="focus-actions">
+                <button class="button button-primary" type="button" id="focusActionBtn">Habit erfassen</button>
+              </div>
+            </article>
+
+            <article class="panel level-card">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Gamification</p>
+                  <h2>Level-Fortschritt</h2>
+                </div>
+                <span class="level-badge" id="levelPill">Level 1</span>
+              </div>
+              <div class="progress-track large" aria-label="Fortschritt bis zum nächsten Level">
+                <div class="progress-fill" id="levelProgressFill"></div>
+              </div>
+              <p class="small-copy" id="levelProgressText">Noch 100 XP bis Level 2.</p>
+            </article>
+
+            <article class="panel quick-actions">
+              <p class="eyebrow">Daten</p>
+              <h2>Präsentation vorbereiten</h2>
+              <div class="stacked-actions">
+                <button class="button button-secondary" type="button" id="exportDataBtn">JSON exportieren</button>
+                <label class="button button-ghost file-button" for="importDataInput">JSON importieren</label>
+                <input id="importDataInput" type="file" accept="application/json" hidden />
+                <button class="button button-danger" type="button" id="resetDataBtn">Daten zurücksetzen</button>
+              </div>
+            </article>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="statsView" aria-labelledby="statsTitle">
+        <div class="section-heading page-heading">
+          <div>
+            <p class="eyebrow">Auswertung</p>
+            <h2 id="statsTitle">Statistik und Fortschritt</h2>
+          </div>
+          <button class="button button-primary" type="button" id="statsCreateHabit">+ Habit</button>
+        </div>
+
+        <div class="stats-grid">
+          <article class="panel stat-highlight">
+            <p class="eyebrow">Erfüllungsquote</p>
+            <strong id="completionRate">0%</strong>
+            <span id="completionRateText">Noch keine Daten vorhanden.</span>
+          </article>
+          <article class="panel stat-highlight">
+            <p class="eyebrow">Bester Streak</p>
+            <strong id="bestStreak">0 Tage</strong>
+            <span>Über alle Habits hinweg.</span>
+          </article>
+          <article class="panel stat-highlight">
+            <p class="eyebrow">Abschlüsse</p>
+            <strong id="totalChecks">0</strong>
+            <span>Alle erledigten Habit-Tage.</span>
+          </article>
+        </div>
+
+        <div class="stats-layout">
+          <article class="panel">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Aktuelle Woche</p>
+                <h2>Wochenübersicht</h2>
+              </div>
+              <span class="hint">fällig / erledigt</span>
+            </div>
+            <div class="week-chart" id="weekChart" aria-label="Erfüllungsquote pro Wochentag"></div>
+          </article>
+
+          <article class="panel">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">14 Tage</p>
+                <h2>Habit-Heatmap</h2>
+              </div>
+            </div>
+            <div class="heatmap" id="heatmap" aria-label="Erfüllungsquote der letzten 14 Tage"></div>
+          </article>
+
+          <article class="panel wide-panel">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Qualität</p>
+                <h2>Habit-Erfolg der letzten 30 Tage</h2>
+              </div>
+            </div>
+            <div class="habit-performance" id="habitPerformance"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="badgesView" aria-labelledby="badgesTitle">
+        <div class="section-heading page-heading">
+          <div>
+            <p class="eyebrow">Motivation</p>
+            <h2 id="badgesTitle">Badges und Erfolge</h2>
+          </div>
+        </div>
+        <div class="badge-grid" id="badgeGrid"></div>
+      </section>
+
+      <section class="view" id="guideView" aria-labelledby="guideTitle">
+        <div class="section-heading page-heading">
+          <div>
+            <p class="eyebrow">Benutzerhandbuch</p>
+            <h2 id="guideTitle">So funktioniert HabitHero</h2>
+          </div>
+        </div>
+        <div class="guide-grid">
+          <article class="panel guide-card">
+            <span>1</span>
+            <h3>Habit erfassen</h3>
+            <p>Über «+ Habit» wird eine neue Gewohnheit mit Titel, Kategorie, XP und Wiederholungstagen erstellt.</p>
+          </article>
+          <article class="panel guide-card">
+            <span>2</span>
+            <h3>Täglich abhaken</h3>
+            <p>Fällige Habits können auf dem Dashboard mit einem Klick als erledigt markiert oder wieder geöffnet werden.</p>
+          </article>
+          <article class="panel guide-card">
+            <span>3</span>
+            <h3>Statistik prüfen</h3>
+            <p>Die Statistik zeigt Wochenverlauf, Erfüllungsquote, Heatmap, Streaks und Habit-Erfolg der letzten 30 Tage.</p>
+          </article>
+          <article class="panel guide-card">
+            <span>4</span>
+            <h3>Motivation nutzen</h3>
+            <p>XP, Level und Badges machen Fortschritt sichtbar und unterstützen die langfristige Motivation.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="habitModal" hidden>
+    <form class="modal" id="habitForm" aria-labelledby="habitFormTitle">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">Habit</p>
+          <h2 id="habitFormTitle">Neuen Habit erfassen</h2>
+        </div>
+        <button class="icon-button" type="button" id="closeHabitModal" aria-label="Dialog schliessen">×</button>
+      </div>
+
+      <input type="hidden" id="habitId" />
+
+      <label class="form-field">
+        <span>Titel</span>
+        <input id="habitTitle" name="title" type="text" placeholder="z. B. 20 Minuten spazieren" maxlength="70" required />
+      </label>
+
+      <label class="form-field">
+        <span>Beschreibung</span>
+        <textarea id="habitDescription" name="description" rows="3" placeholder="Kurze Notiz, warum dieser Habit wichtig ist"></textarea>
+      </label>
+
+      <div class="form-row">
+        <label class="form-field">
+          <span>Kategorie</span>
+          <select id="habitCategory" name="category"></select>
+        </label>
+        <label class="form-field">
+          <span>XP pro Abschluss</span>
+          <input id="habitXp" name="xp" type="number" min="5" max="50" step="5" value="10" required />
+        </label>
+      </div>
+
+      <fieldset class="weekday-fieldset">
+        <legend>Wiederholungstage</legend>
+        <div class="weekday-options" id="weekdayOptions"></div>
+      </fieldset>
+
+      <div class="modal-actions">
+        <button class="button button-danger" type="button" id="deleteHabitBtn" hidden>Löschen</button>
+        <div>
+          <button class="button button-ghost" type="button" id="cancelHabitForm">Abbrechen</button>
+          <button class="button button-primary" type="submit">Speichern</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

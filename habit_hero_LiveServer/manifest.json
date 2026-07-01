@@ -1,0 +1,21 @@
+{
+  "name": "HabitHero",
+  "short_name": "HabitHero",
+  "description": "Web-App zum Aufbau positiver Gewohnheiten mit Fortschritt, Statistik und Gamification.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#36c83f",
+  "icons": [
+    {
+      "src": "assets/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/logo-icon.png",
+      "sizes": "640x640",
+      "type": "image/png"
+    }
+  ]
+}
